@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import os
+from pathlib import Path
 import random
 import re
 import readline
@@ -24,9 +25,9 @@ default_prompt = {
     "use_authors_note": False,  #?
     "use_world_info": False,  #?
     "quiet": True,
+#    "max_context_length": 4096,
     "max_context_length": 2048,
     "max_length": 30,
-#    "max_context_length": 400, #!!!
     "singleline": False,  #?
     "n": 1,
     "temperature": 0.7,
@@ -72,10 +73,13 @@ class Conversation:
     def set_bot(self, bot):
         self.botname = bot["name"]
         self.bot = bot
-        memory = "\n".join((bot["persona"], bot["scenario"], bot["example"]))+"##"
-        self.prompt_data["memory"] = self.parse_vars(memory)
+        memory = "\n".join((bot["description"], bot["scenario"], bot["example_dialogue"]))+"##"
+        memory = self.parse_vars(memory)
+        self.prompt_data["memory"] = memory
         self.memory_tokens = self.count_tokens(memory)
-        self.log = f"aiclient.log"
+        self.log = f"log/aiclient_{self.botname}.log"
+        print("\n\n", "#"*32, sep="")
+        print(f"Started character: {self.botname}")
         self.load_history()
 
     def parse_vars(self, text):
@@ -124,9 +128,11 @@ class Conversation:
                 self.prompt = text
                 self.store_cutoff(file)
         if self.prompt == "":
-            first = self.parse_vars( self.bot['first_mes'] )
+            print("History is empty, starting new conversation.\n")
+            first = self.parse_vars( self.bot['char_greeting'] )
             self.to_prompt(first)
         else:
+            print(f"History loaded: {self.log}\n")
             self.to_prompt("")  # shift context, if log was extended manually
         print(self.prompt,"\n", sep="")
 
@@ -145,6 +151,12 @@ class Conversation:
             f.seek(pos)
             self.store_cutoff(f)
             f.truncate()
+
+    def clear_bot(self):
+        self.prompt = ""
+        self.cutoff = 0
+        self.truncate_history()
+        self.set_bot(self.bot)
 
     # up to 300 tokens shifts were observed, we can assume no small limit there
     def shift_context(self, shift):
@@ -219,6 +231,7 @@ class Conversation:
                     response = response.removesuffix(suffix).rstrip()
                     if response != "":
                         response += "\n"
+                    print("\r", " "*20, "\r", sep="")
                     done = True
                     break
         elif stop_reason == 0:  # out of tokens
@@ -245,20 +258,36 @@ class Conversation:
 
     def help(self):
         print("""Help:
+/ls        - list all chars
+/load char - load new char
+/clear     - clear history
 "=" - add new line
-/h /help  - this help message
+/h /help   - this help message
 /d [n] /del [n] - delete n lines / last line
-/r        - refresh screen
+/r         - refresh screen
+/stop      - stop answering llm engine
+Ctrl+c     - while receiving llm answer: cancel
+Ctrl-z     - exit
+/set var value - set engine variable
+/set       - list engine variables
 """     )
 
     def refresh_screen(self, chars=2000):
         print("\n"*3, self.prompt[-chars:], "\n", sep="")
 
     def add_message(self, message):
-        if message == "/abort":
+        if message == "/stop":
             self.abort()
         elif message.startswith( ("/h", "/help") ):
             self.help()
+        elif message == "/ls":
+            pass  #!!! todo
+        elif message.startswith("/load"):
+            name = message.partition(" ")[2].strip()
+            char = load_char(name)
+            self.set_bot(char)
+        elif message.startswith("/clear"):
+            self.clear_bot()
         elif message.startswith( ("/d", "/del") ):
             count = message.partition(" ")[2].strip()
             count = int(count) if count.isdigit() else 1
@@ -267,13 +296,21 @@ class Conversation:
         elif message.startswith("/r"):
             self.refresh_screen(4000)
         elif message.startswith("/set"):
-            _,var,value = message.split()
-            if value.isdigit():
-                value = int(value)
-            if self.prompt_data.get(var, None) is not None:
-                self.prompt_data[var] = value
+            args = message.split()
+            if len(args) == 1:
+                for k,v in self.prompt_data.items():
+                    print(f"{k}={v}\n")
             else:
-                print("Var not exists.")
+                if len(args) != 3:
+                    print("Error: set need 2 parameters.")
+                else:
+                    _,var,value = args
+                    if value.isdigit():
+                        value = int(value)
+                    if self.prompt_data.get(var, None) is not None:
+                        self.prompt_data[var] = value
+                    else:
+                        print("Var not exists.")
         else:
             if message == "":
                 self.refresh_screen()
@@ -305,14 +342,95 @@ def talk(bot):
             chat.add_message(message)
         except KeyboardInterrupt:
             input("\nEnter to continue, Ctrl+C second time to exit.")
+        except EOFError:
+            print("End of input, exiting...")
+            break
 
 
-assistant=dict(name="Assistant",
-    persona="",
-    example="",
+def strip_char(char):
+    dupkeys = (
+        ("name", "char_name"),
+        ("description", "char_persona"),
+        ("scenario", "world_scenario"),
+        ("example_dialogue", "mes_example"),
+        ("char_greeting", "first_mes"),
+    )
+    for key1,key2 in dupkeys:
+        if char.get(key1, None) is None:
+            char[key1] = char[key2]
+        char.pop(key2, None)
+        char[key1] = char[key1].strip()
+
+
+def load_char(name, dir="chars"):
+    names = (name, name+".pch", name+".json")
+    for testname in names:
+        path = Path(dir, testname)
+        if path.is_file():
+            with path.open() as f:
+                if testname.endswith(".pch"):
+                    char = eval(f.read(), {"__builtins__": {"dict": dict}})
+                else:
+                    char = json.load(f)
+                strip_char(char)
+                return char
+
+
+#!!! todo: fill alternative tags from pair
+def save_char(char, file, dir="chars"):
+    if not file.endswith(".json"):
+        file += ".json"
+    with open(f"{dir}/{file}", "w") as f:
+        json.dump(char, f, indent=3)
+
+
+def char_to_py(char, file, dir="chars"):
+    longkeys = (
+        "description", "char_persona",
+        "scenario", "world_scenario",
+        "example_dialogue", "mes_example",
+        "char_greeting", "first_mes",
+    )
+    parts = ["dict(\n"]
+    for k,v in char.items():
+        if isinstance(v, str):
+            if v == "" or k not in longkeys:
+                parts.append(f'{k} = """{v}""",\n')
+            else:
+                parts.append(f'{k} = """\n\n{v}\n\n""",\n')
+        else:
+            parts.append(f'{k} = {v},\n')
+    parts.append(")\n")
+    text = "\n".join(parts)
+    if not file.endswith(".pch"):
+        file += ".pch"
+    with open(f"{dir}/{file}", "w") as f:
+        f.write(text)
+
+
+assistant=dict(
+    name="Assistant",
+    description="",
+    example_dialogue="",
     scenario="",
-    first_mes="How can I help?"
+    char_greeting="How can I help?",
 )
 
-talk(assistant)
 
+char = assistant
+
+args = sys.argv[1:]
+while args:
+    arg = args.pop(0)
+    if arg in ("-c", "--char"):
+        char = load_char(args.pop(0))
+    elif arg in ("-j", "--json"):
+        save_char(char, args.pop(0))
+        sys.exit()
+    elif arg in ("-p", "--py"):
+        char_to_py(char, args.pop(0))
+        sys.exit()
+    else:
+        raise NameError(f"Error: unknown option {arg}")
+
+talk(char)

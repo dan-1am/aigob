@@ -2,6 +2,13 @@
 
 ## 2023.12.19
 
+- Changed char/bot variable names to more descriptive.
+- Prompt commands for char loading, history clearing
+- History files with char name.
+- Context shifting from previous version working, except the first shift.
+
+## 2023.12.19
+
 - Try to repair context shifting with memory-prompt separator "##"
     - Not working (mostly).
 - Extended stop_reason use in response handling.
