@@ -1,5 +1,11 @@
 # talk2kobold changelog
 
+## 2023.12.20
+
+- Context shifting fully works!
+      (added "\n" before char_greeting, cut prompt just before "\n")
+- Removed char message stripping.
+
 ## 2023.12.19
 
 - Changed char/bot variable names to more descriptive.

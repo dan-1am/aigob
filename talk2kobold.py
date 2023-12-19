@@ -129,7 +129,8 @@ class Conversation:
                 self.store_cutoff(file)
         if self.prompt == "":
             print("History is empty, starting new conversation.\n")
-            first = self.parse_vars( self.bot['char_greeting'] )
+            # trying to avoid failed first context shift
+            first = "\n"+self.parse_vars( self.bot['char_greeting'] )
             self.to_prompt(first)
         else:
             print(f"History loaded: {self.log}\n")
@@ -338,7 +339,7 @@ def talk(bot):
                 mode = "="
             else:
                 mode = "+"
-            message = input(f"{chat.user} {mode}> ").strip()
+            message = input(f"{chat.user} {mode}> ")
             chat.add_message(message)
         except KeyboardInterrupt:
             input("\nEnter to continue, Ctrl+C second time to exit.")
