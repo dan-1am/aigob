@@ -1,5 +1,13 @@
 # talk2kobold changelog
 
+## 2023.12.19
+
+- Try to repair context shifting with memory-prompt separator "##"
+    - Not working (mostly).
+- Extended stop_reason use in response handling.
+- Prompt commands: delete line, add newline, set engine variable.
+- Remove engine auto-abort on start.
+
 ## 2023.12.18
 
 - Response sse streaming.
