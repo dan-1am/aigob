@@ -4,9 +4,9 @@ import json
 import os
 import random
 import re
+import readline
 
 import requests
-
 
 def tolog(txt):
     with open("aiclient_debug.log","a") as f:
@@ -24,7 +24,8 @@ default_prompt = {
     "use_world_info": False,  #?
     "quiet": True,
     "max_context_length": 2048,
-    "max_length": 16,
+    "max_length": 30,
+#    "max_context_length": 400, #!!!
     "singleline": False,  #?
     "n": 1,
     "temperature": 0.7,
@@ -62,7 +63,7 @@ class Conversation:
     def __init__(self, user, bot=None):
         self.user = user
         self.prompt_data = default_prompt
-        self.stop_sequence = ["{{user}}:"]
+        self.stop_sequence = ["{{user}}:", "\n{{user}} "]
 #        self.stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
         if bot is not None:
             self.set_bot(bot)
@@ -93,7 +94,11 @@ class Conversation:
                 self.cutoff = 0
                 self.prompt = text
                 file.write(f"\n{self.cutoff:0{self.cutoff_digits}}")
-        self.to_prompt("")  # shift context, if log was extended manually
+        if self.prompt == "":
+            first = self.parse_vars( self.bot['first_mes'] )
+            self.to_prompt(first)
+        else:
+            self.to_prompt("")  # shift context, if log was extended manually
         print(self.prompt,"\n", sep="")
 
     def to_history(self, msg):
@@ -107,32 +112,15 @@ class Conversation:
 
     # up to 300 tokens shifts were observed, we can assume no small limit there
     def shift_context(self, shift):
-        pos = self.cutoff+shift*5+100
-#        for end in ('\n\n', '.\n', '"\n', '\n', ' '):
-#            pos2 = self.prompt.find(end, pos, pos+400)
-#            if pos2 >= 0:
-#                pos = pos2+len(end)
-#                break
+        pos = self.cutoff+shift*5+10
+        for end in ('\n\n', '.\n', '"\n', '\n', ' '):
+            pos2 = self.prompt.find(end, pos, pos+200)
+            if pos2 >= 0:
+                pos = pos2+len(end)-1
+                break
+        pos = self.find_token(self.prompt, pos)
         tolog(f'{shift=} cutting={pos-self.cutoff}\n\ncut=[{self.prompt[self.cutoff:pos]}]\n\nnew_start=[{self.prompt[pos:pos+60]}]...\n')
         self.cutoff = pos
-
-    """
-    def to_prompt(self, message):
-        self.prompt += message
-        now = len(self.prompt) - self.cutoff
-        #!!! if 30//10 will work, try 29//10. 30//10 with 4k context may overflow.
-        max_context = self.prompt_data['max_context_length']
-        max = (max_context-self.memory_tokens)*30//10
-        add = self.count_tokens(self.prompt)
-        # - len(self.prompt_data["memory"])
-        tolog(f'{now} < {max} = {len(self.prompt_data["memory"])}\n')
-        if now > max:
-            tolog(f'message {len(message)}=[{message}]\n')
-            self.shift_context(now-max)
-        elif message == "":
-            return
-        self.to_history(message)
-    """
 
     def to_prompt(self, message):
         self.prompt += message
@@ -164,6 +152,16 @@ class Conversation:
         status = self.status()
         return response, status['stop_reason']
 
+    def get_stream(self):
+        jprompt = self.get_json_prompt()
+        response = requests.post(f"{self.endpoint}/api/extra/generate/stream",
+            json=jprompt, stream=True)
+        if response.status_code != 200:
+            raise IOError  #!!!todo add text
+        if response.encoding is None:
+            response.encoding = 'utf-8'
+        return response.iter_lines(chunk_size=20, decode_unicode=True)
+
     def collect_response(self, message):
         self.to_prompt(message)
         generated = 0
@@ -177,6 +175,7 @@ class Conversation:
                     if response != "":
                         response += "\n"
                     done = True
+                    break
             if not done:
                 if stop_reason == 1:
                     response = response.rstrip()+"\n"
@@ -202,6 +201,36 @@ class Conversation:
                 print()
                 break
 
+    def stream_response(self, message):
+        self.to_prompt(message)
+        response = ""
+        mode = None
+        for line in self.get_stream():
+            if line:  #filter out keep-alive new lines
+                tolog(f"line=[{line}]\n")
+                if mode is None:
+                    if line == "event: message":
+                        mode = "message"
+                elif mode == "message":
+                    if line.startswith("data:"):
+                        jresponse = json.loads(line.removeprefix("data: "))
+                        token = jresponse['token']
+                        response += token
+                        print(token, end="", flush=True)
+                        mode = None
+        done = False
+        for suffix in self.prompt_data['stop_sequence']:
+            if response.endswith(suffix):
+                response = response.removesuffix(suffix).rstrip()
+                if response != "":
+                    response += "\n"
+                done = True
+                break
+        if not done:
+            response = response.rstrip()+"\n"
+        print("\n")
+        self.to_prompt(response)
+
     def post(self, message):
         message = message.strip()
         if message[0:1] == '"':
@@ -209,9 +238,14 @@ class Conversation:
         if len(message):
             message = f"\n{message}\n\n"
         try:
-            self.collect_response(message)
+#            if not self.status()['idle']:
+#                self.abort()
+#            self.collect_response(message)
+            self.stream_response(message)
         except IOError:
             print("Error: can not send message.")
+        except KeyboardInterrupt:
+            print()
 
     def abort(self):
         requests.post(f"{self.endpoint}/api/extra/abort")
@@ -234,6 +268,12 @@ class Conversation:
             raise IOError  #!!!todo add text
         return response.json()['value']
 
+    def find_token(self, text, pos):
+        n = self.count_tokens(text[:pos])
+        while n == self.count_tokens(text[:pos+1]):
+            pos += 1
+        return pos
+
 
 def format_bot(bot):
     for k in bot:
@@ -243,19 +283,24 @@ def format_bot(bot):
 def talk(bot):
     format_bot(bot)
     chat = Conversation("You", bot)
-    chat.abort()
     while True:
-        user_message = input(f"{chat.user}> ")
-        print()
-        chat.post(user_message)
+        try:
+            user_message = input(f"{chat.user}> ").strip()
+            if user_message == "/abort":
+                chat.abort()
+            else:
+                print()
+                chat.post(user_message)
+        except KeyboardInterrupt:
+            input("\nEnter to continue, Ctrl+C second time to exit.")
 
 
 assistant=dict(name="Assistant",
-    persona="""Try to help.""",
+    persona="",
     example="",
     scenario="",
     first_mes="How can I help?"
 )
 
-
 talk(assistant)
+

@@ -1,5 +1,12 @@
 # talk2kobold changelog
 
+## 2023.12.18
+
+- Response sse streaming.
+- Ctrl+c streaming interruption.
+- Try to repair context shifting with prompt cut to next token start.
+    - Not working.
+
 ## 2023.12.16
 
 - Add extended kobold api.
