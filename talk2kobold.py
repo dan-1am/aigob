@@ -6,13 +6,67 @@ from pathlib import Path
 import random
 import re
 import readline
+import sys
 
 import requests
+
+
+class Settings:
+    conffile = "talk2kobold.conf"
+    chardir = "chars"
+    logdir = "log"  #!!!
+    endpoint = "http://127.0.0.1:5001"  #!!!
+    last_char = ""
+
+    def set(self, var, value):
+        setattr(self, var, value)
+        self.save()
+
+    def load(self):
+        if Path(self.conffile).is_file():
+            with open(self.conffile, "r") as f:
+                self.__dict__ = json.load(f)
+
+    def save(self):
+        with open(self.conffile, "w") as f:
+            json.dump(self.__dict__, f)
+
+
+conf = Settings()
 
 
 def tolog(txt):
     with open("aiclient_debug.log","a") as f:
         f.write(txt)
+
+
+def eval_template(template, context):
+    return re.sub(r'\{\{(.*?)\}\}',
+        lambda m: str( eval(m[1], context) ), template)
+
+
+def count_newlines(text):
+    i = len(text)
+    while text[i-1] == "\n":
+        i -= 1
+    return len(text)-i
+
+
+def wrap_text(txt, width=72):
+    txt = txt.replace("\n", " ")
+    txt = re.sub("\s{2,}", " ", txt)
+    result = []
+    while len(txt):
+        pos = width
+        if len(txt) <= pos:
+            result.append(txt.rstrip())
+            break
+        pos2 = txt.rfind(" ", 0, pos+1)
+        if pos2 >= 0:
+            pos = pos2+1
+        result.append(txt[:pos].rstrip())
+        txt = txt[pos:]
+    return "\n".join(result)
 
 
 default_prompt = {
@@ -27,7 +81,8 @@ default_prompt = {
     "quiet": True,
 #    "max_context_length": 4096,
     "max_context_length": 2048,
-    "max_length": 30,
+#    "max_context_length": 1300,
+    "max_length": 16,
     "singleline": False,  #?
     "n": 1,
     "temperature": 0.7,
@@ -52,9 +107,80 @@ default_prompt = {
 }
 
 
-def eval_template(template, context):
-    return re.sub(r'\{\{(.*?)\}\}',
-        lambda m: str( eval(m[1], context) ), template)
+assistant=dict(
+    name="Assistant",
+    description="",
+    example_dialogue="",
+    scenario="",
+    char_greeting="How can I help?",
+)
+
+
+def strip_char(char):
+    dupkeys = (
+        ("name", "char_name"),
+        ("description", "char_persona"),
+        ("scenario", "world_scenario"),
+        ("example_dialogue", "mes_example"),
+        ("char_greeting", "first_mes"),
+    )
+    for key1,key2 in dupkeys:
+        if char.get(key1, None) is None:
+            char[key1] = char[key2]
+        char.pop(key2, None)
+        char[key1] = char[key1].strip()
+
+
+def load_char(name, dir=None):
+    if dir == None:
+        dir = conf.chardir
+    names = (name, name+".pch", name+".json")
+    for testname in names:
+        path = Path(dir, testname)
+        if path.is_file():
+            with path.open() as f:
+                if testname.endswith(".pch"):
+                    char = eval(f.read(), {"__builtins__": {"dict": dict}})
+                else:
+                    char = json.load(f)
+                strip_char(char)
+                return char
+
+
+#!!! todo: fill alternative tags from pair
+def char_to_json(char, file, dir=None):
+    if dir == None:
+        dir = conf.chardir
+    if not file.endswith(".json"):
+        file += ".json"
+    with open(f"{dir}/{file}", "w") as f:
+        json.dump(char, f, indent=3)
+
+
+def char_to_pch(char, file, dir=None):
+    if dir == None:
+        dir = conf.chardir
+    longkeys = (
+        "description", "char_persona",
+        "scenario", "world_scenario",
+        "example_dialogue", "mes_example",
+        "char_greeting", "first_mes",
+    )
+    parts = ["dict(\n"]
+    for k,v in char.items():
+        if isinstance(v, str):
+            if v == "" or k not in longkeys:
+                parts.append(f'{k} = """{v}""",\n')
+            else:
+                parts.append(f'{k} = """\n\n{v}\n\n""",\n')
+        else:
+            parts.append(f'{k} = {v},\n')
+    parts.append(")\n")
+    text = "\n".join(parts)
+    if not file.endswith(".pch"):
+        file += ".pch"
+    with open(f"{dir}/{file}", "w") as f:
+        f.write(text)
 
 
 class Conversation:
@@ -62,18 +188,19 @@ class Conversation:
     endpoint = "http://127.0.0.1:5001"
     cutoff_digits = 8
 
-    def __init__(self, user, bot=None):
+    def __init__(self, user, bot=""):
         self.user = user
         self.prompt_data = default_prompt
         self.stop_sequence = ["{{user}}:", "\n{{user}} "]
 #        self.stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
-        if bot is not None:
-            self.set_bot(bot)
+        self.set_bot(bot)
 
-    def set_bot(self, bot):
+    def set_bot(self, bot=""):
+        if bot == "":
+            bot = assistant
         self.botname = bot["name"]
         self.bot = bot
-        memory = "\n".join((bot["description"], bot["scenario"], bot["example_dialogue"]))+"##"
+        memory = "\n".join((bot["description"], bot["scenario"], bot["example_dialogue"])) + "\n" #!!!
         memory = self.parse_vars(memory)
         self.prompt_data["memory"] = memory
         self.memory_tokens = self.count_tokens(memory)
@@ -96,18 +223,21 @@ class Conversation:
         """
         response = requests.get(f"{self.endpoint}/api/extra/perf")
         if response.status_code != 200:
-            raise IOError  #!!!todo add text
+            raise IOError("Can not get status from engine")
         return response.json()
 
     def count_tokens(self, text):
         response = requests.post(f"{self.endpoint}/api/extra/tokencount",
             json={"prompt": text})
         if response.status_code != 200:
-            raise IOError  #!!!todo add text
+            raise IOError("Can not get get token count from engine")
         return response.json()['value']
 
     def find_token(self, text, pos):
-        n = self.count_tokens(text[:pos])
+        if pos == 0:
+            n = 0
+        else:
+            n = self.count_tokens(text[:pos])
         while n == self.count_tokens(text[:pos+1]):
             pos += 1
         return pos
@@ -129,13 +259,13 @@ class Conversation:
                 self.store_cutoff(file)
         if self.prompt == "":
             print("History is empty, starting new conversation.\n")
-            # trying to avoid failed first context shift
-            first = "\n"+self.parse_vars( self.bot['char_greeting'] )
+            # "\n" for avoid failing first context shift:
+            first = "\n"+self.parse_vars( self.bot['char_greeting'] )+"\n\n"
             self.to_prompt(first)
         else:
             print(f"History loaded: {self.log}\n")
             self.to_prompt("")  # shift context, if log was extended manually
-        print(self.prompt,"\n", sep="")
+        print(self.prompt, sep="", end="", flush=True)
 
     def to_history(self, msg):
         with open(self.log, "r+") as f:
@@ -165,9 +295,10 @@ class Conversation:
         for end in ('\n\n', '.\n', '"\n', '\n', ' '):
             pos2 = self.prompt.find(end, pos, pos+200)
             if pos2 >= 0:
-                pos = pos2+len(end)-1
+                pos = pos2+len(end)-1  #!!!
                 break
-        pos = self.find_token(self.prompt, pos)
+        else:
+            pos = pos + self.find_token(self.prompt[pos:], 0)
 #        tolog(f'{shift=} cutting={pos-self.cutoff}\n\ncut=[{self.prompt[self.cutoff:pos]}]\n\nnew_start=[{self.prompt[pos:pos+60]}]...\n')
         self.cutoff = pos
 
@@ -181,12 +312,12 @@ class Conversation:
 
     def to_prompt(self, message):
         self.prompt += message
-        max = self.prompt_data['max_context_length'] - self.memory_tokens
+        max_ctx = self.prompt_data['max_context_length'] - self.memory_tokens
         now = self.count_tokens(self.prompt[self.cutoff:])
-        extra = now-max+10+self.prompt_data['max_length']
-#        tolog(f'tokens: {extra=}, {now} < {max}, memory={self.memory_tokens}\n')
+        extra = now-(max_ctx-10-self.prompt_data['max_length'])
+#        tolog(f'tokens: {extra=}, {now} < {max_ctx}, memory={self.memory_tokens}\n')
         if extra > 0:
-            self.shift_context(extra)
+            self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
         elif message == "":
             return
         self.to_history(message)
@@ -203,13 +334,12 @@ class Conversation:
         response = requests.post(f"{self.endpoint}/api/extra/generate/stream",
             json=jprompt, stream=True)
         if response.status_code != 200:
-            raise IOError  #!!!todo add text
+            raise IOError("Can not get response stream from engine")
         if response.encoding is None:
             response.encoding = 'utf-8'
         return response.iter_lines(chunk_size=20, decode_unicode=True)
 
-    def stream_response(self, message):
-        self.to_prompt(message)
+    def read_stream(self):
         response = ""
         mode = None
         for line in self.get_stream():
@@ -224,30 +354,24 @@ class Conversation:
                         response += token
                         print(token, end="", flush=True)
                         mode = None
-        done = False
         stop_reason = self.status()['stop_reason']
-        if stop_reason == 2:  # custom stopper
+        return response, stop_reason
+
+    def stream_response(self, message):
+        self.to_prompt(message)
+        response, stop_reason = self.read_stream()
+        if stop_reason == 2:  # custom stopper == stop word?
             for suffix in self.prompt_data['stop_sequence']:
                 if response.endswith(suffix):
-                    response = response.removesuffix(suffix).rstrip()
-                    if response != "":
+                    response = response.removesuffix(suffix)
+                    if suffix.startswith("\n") or suffix.endswith("\n"):
                         response += "\n"
-                    print("\r", " "*20, "\r", sep="")
-                    done = True
                     break
-        elif stop_reason == 0:  # out of tokens
-            response = response.rstrip()
-            if len(response) > 2 and response[:-2] in ('."', '!"', '?"'):
-                response += "\n"
-        else:  # eos token/invalid
-            response = response.rstrip()+"\n"
-        print("\n")
+        #else:  # 0=out of tokens, 1=eos token, -1=invalid
+#        response = response.rstrip()+"\n"
         self.to_prompt(response)
 
     def post(self, message):
-        message = message.strip()
-        if len(message):
-            message = f"\n{message}\n\n"
         try:
 #            if not self.status()['idle']:
 #                self.abort()
@@ -257,6 +381,9 @@ class Conversation:
         except KeyboardInterrupt:
             print()
 
+    def refresh_screen(self, end="", chars=2000):
+        print("\n"*3, self.prompt[-chars:], end, sep="", end="")
+
     def help(self):
         print("""Help:
 /ls        - list all chars
@@ -264,7 +391,7 @@ class Conversation:
 /clear     - clear history
 "=" - add new line
 /h /help   - this help message
-/d [n] /del [n] - delete n lines / last line
+/del [n] /d [n]  - delete n lines / last line
 /r         - refresh screen
 /stop      - stop answering llm engine
 Ctrl+c     - while receiving llm answer: cancel
@@ -273,29 +400,39 @@ Ctrl-z     - exit
 /set       - list engine variables
 """     )
 
-    def refresh_screen(self, chars=2000):
-        print("\n"*3, self.prompt[-chars:], "\n", sep="")
-
-    def add_message(self, message):
+    def command_message(self, message):
         if message == "/stop":
             self.abort()
         elif message.startswith( ("/h", "/help") ):
             self.help()
+        elif message == "/test":
+            mem = self.prompt_data["memory"]
+            prompt = self.prompt[self.cutoff:]
+            memtm = self.count_tokens(mem[:-1])
+            memt0 = self.count_tokens(mem)
+#            memt1 = self.count_tokens(mem+prompt[:1])
+            memt1 = self.count_tokens(mem+"\n")
+            memt2 = self.count_tokens(mem+"\n\n")
+            memt3 = self.count_tokens(mem+"\n\n\n")
+            print(f"tokens: {memtm=} {memt0=} {memt1=} {memt2=} {memt3=}")
         elif message == "/ls":
-            pass  #!!! todo
+            for f in Path(conf.chardir).iterdir():
+                if f.suffix in (".json", ".pch"):
+                    print(f.name)
         elif message.startswith("/load"):
             name = message.partition(" ")[2].strip()
+            conf.set("last_char", name)
             char = load_char(name)
             self.set_bot(char)
         elif message.startswith("/clear"):
             self.clear_bot()
-        elif message.startswith( ("/d", "/del") ):
+        elif message.startswith( ("/del", "/d") ):
             count = message.partition(" ")[2].strip()
             count = int(count) if count.isdigit() else 1
             self.del_prompt_lines(count)
             self.refresh_screen()
         elif message.startswith("/r"):
-            self.refresh_screen(4000)
+            self.refresh_screen(chars=4000)
         elif message.startswith("/set"):
             args = message.split()
             if len(args) == 1:
@@ -313,32 +450,56 @@ Ctrl-z     - exit
                     else:
                         print("Var not exists.")
         else:
-            if message == "":
-                self.refresh_screen()
-                self.post("")
-            elif message == "=":
-                self.to_prompt("\n")
-                self.refresh_screen()
+            print("Unknown command.")
+
+    def add_message(self, message):
+#        unfinished = len(self.prompt) and self.prompt[-1:] != "\n"
+        if message.startswith("/"):
+            self.command_message(message)
+        elif message == "":
+            self.refresh_screen(end="")
+            self.post("")
+        elif message == "=":
+            self.to_prompt("\n")
+            self.refresh_screen()
+        elif message == "-":
+            self.del_prompt_lines()
+            self.refresh_screen()
+        elif message[0] == "+":
+            parts = message[1:].split("\\n")
+            message = "\n".join(wrap_text(t) for t in parts)
+            self.to_prompt(message)
+            self.refresh_screen()
+        else:
+            newlines = count_newlines(self.prompt)
+            prefix = ""
+            if newlines > 2:
+                self.prompt = self.prompt[:2-newlines]
+                # need optimization: extra file write
+                self.truncate_history()
+            elif newlines < 2:
+                prefix = "\n"*(2-newlines)
+            message = f"{self.user}: {message}"
+            message = prefix + wrap_text(message)
+            if message.endswith("+"):
+                message = message[:-1]
             else:
-                if message[0:1] == '"':
-                    message = f"{self.user}: {message}"
-                self.to_prompt(message+"\n")
-
-
-def format_bot(bot):
-    for k in bot:
-        bot[k] = bot[k].strip()
+                message = f"{message}\n\n"
+            self.refresh_screen(end="")
+            print(message, end="", flush=True)
+            self.post(message)
 
 
 def talk(bot):
-    format_bot(bot)
     chat = Conversation("You", bot)
     while True:
+        if chat.prompt == "" or chat.prompt.endswith("\n"):
+            mode = ""
+            print("\r", " "*20, "\r", sep="", end="")
+        else:
+            mode = "+"
+            print()
         try:
-            if chat.prompt == "" or chat.prompt.endswith("\n"):
-                mode = "="
-            else:
-                mode = "+"
             message = input(f"{chat.user} {mode}> ")
             chat.add_message(message)
         except KeyboardInterrupt:
@@ -348,88 +509,22 @@ def talk(bot):
             break
 
 
-def strip_char(char):
-    dupkeys = (
-        ("name", "char_name"),
-        ("description", "char_persona"),
-        ("scenario", "world_scenario"),
-        ("example_dialogue", "mes_example"),
-        ("char_greeting", "first_mes"),
-    )
-    for key1,key2 in dupkeys:
-        if char.get(key1, None) is None:
-            char[key1] = char[key2]
-        char.pop(key2, None)
-        char[key1] = char[key1].strip()
-
-
-def load_char(name, dir="chars"):
-    names = (name, name+".pch", name+".json")
-    for testname in names:
-        path = Path(dir, testname)
-        if path.is_file():
-            with path.open() as f:
-                if testname.endswith(".pch"):
-                    char = eval(f.read(), {"__builtins__": {"dict": dict}})
-                else:
-                    char = json.load(f)
-                strip_char(char)
-                return char
-
-
-#!!! todo: fill alternative tags from pair
-def save_char(char, file, dir="chars"):
-    if not file.endswith(".json"):
-        file += ".json"
-    with open(f"{dir}/{file}", "w") as f:
-        json.dump(char, f, indent=3)
-
-
-def char_to_py(char, file, dir="chars"):
-    longkeys = (
-        "description", "char_persona",
-        "scenario", "world_scenario",
-        "example_dialogue", "mes_example",
-        "char_greeting", "first_mes",
-    )
-    parts = ["dict(\n"]
-    for k,v in char.items():
-        if isinstance(v, str):
-            if v == "" or k not in longkeys:
-                parts.append(f'{k} = """{v}""",\n')
-            else:
-                parts.append(f'{k} = """\n\n{v}\n\n""",\n')
-        else:
-            parts.append(f'{k} = {v},\n')
-    parts.append(")\n")
-    text = "\n".join(parts)
-    if not file.endswith(".pch"):
-        file += ".pch"
-    with open(f"{dir}/{file}", "w") as f:
-        f.write(text)
-
-
-assistant=dict(
-    name="Assistant",
-    description="",
-    example_dialogue="",
-    scenario="",
-    char_greeting="How can I help?",
-)
-
-
-char = assistant
+conf.load()
+char = conf.last_char
+if char != "":
+    char = load_char(char)
 
 args = sys.argv[1:]
 while args:
     arg = args.pop(0)
     if arg in ("-c", "--char"):
-        char = load_char(args.pop(0))
+        conf.set("last_char", args.pop(0))
+        char = load_char(conf.last_char)
     elif arg in ("-j", "--json"):
-        save_char(char, args.pop(0))
+        char_to_json(char, args.pop(0))
         sys.exit()
     elif arg in ("-p", "--py"):
-        char_to_py(char, args.pop(0))
+        char_to_pch(char, args.pop(0))
         sys.exit()
     else:
         raise NameError(f"Error: unknown option {arg}")

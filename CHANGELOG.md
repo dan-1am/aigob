@@ -1,5 +1,14 @@
 # talk2kobold changelog
 
+## 2023.12.23
+
+- Got puzzled with llm in wrong format not working with koboldcpp
+    context shifting for a long time, but eventually did it right.
+- Streamline line endings in stream_response() and add_message()
+- Configuration class (not fully integrated yet) and file.
+- Tune char load/save.
+- Implement /ls chat command.
+
 ## 2023.12.20
 
 - Context shifting fully works!
