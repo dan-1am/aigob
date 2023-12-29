@@ -7,28 +7,29 @@ import random
 import re
 import readline
 import sys
+import time
 
 import requests
 
 
 class Settings:
-    conffile = "talk2kobold.conf"
+    _conffile = "talk2kobold.conf"
     chardir = "chars"
-    logdir = "log"  #!!!
-    endpoint = "http://127.0.0.1:5001"  #!!!
-    last_char = ""
+    logdir = "log"
+    endpoint = "http://127.0.0.1:5001"
+    lastchar = ""
 
     def set(self, var, value):
         setattr(self, var, value)
         self.save()
 
     def load(self):
-        if Path(self.conffile).is_file():
-            with open(self.conffile, "r") as f:
+        if Path(self._conffile).is_file():
+            with open(self._conffile, "r") as f:
                 self.__dict__ = json.load(f)
 
     def save(self):
-        with open(self.conffile, "w") as f:
+        with open(self._conffile, "w") as f:
             json.dump(self.__dict__, f)
 
 
@@ -72,38 +73,40 @@ def wrap_text(txt, width=72):
 default_prompt = {
     "memory": "",
     "prompt": "",
-    "stop_sequence": ["You:", "\nYou "], #+
-    "use_story": False,  #?
-    "use_memory": True,  #?
+    "stop_sequence": ["You:", "\nYou ", "\n\n"],
+    "use_story": False,
+    "use_memory": True,
     "use_default_badwordsids": False,
-    "use_authors_note": False,  #?
-    "use_world_info": False,  #?
+    "use_authors_note": False,
+    "use_world_info": False,
     "quiet": True,
-#    "max_context_length": 4096,
-    "max_context_length": 2048,
-#    "max_context_length": 1300,
+
+    "max_context_length": 4096,
+#    "max_context_length": 2048,
     "max_length": 16,
-    "singleline": False,  #?
-    "n": 1,
-    "temperature": 0.7,
-    "mirostat": 2,
-    "mirostat_tau": 5.0,
-    "mirostat_eta": 0.1,
     "rep_pen": 1.1,
     "rep_pen_range": 320,
     "rep_pen_slope": 0.7,
+    "sampler_order": [6, 0, 1, 3, 4, 2, 5],
+    #"sampler_seed": 69420,   #set the seed
+    #"sampler_full_determinism": False,     #set it so the seed determines generation content
+
+    "singleline": False,
+    "n": 1,
+#    "temperature": 0.7,
+    "temperature": 0.8,
     "tfs": 1,
     "top_a": 0,
     "top_k": 100,
     "top_p": 0.92,
     "typical": 1,
     "min_p": 0,
+    "mirostat": 2,
+    "mirostat_tau": 5.0,
+    "mirostat_eta": 0.1,
     "genkey": "KCPP1912",
-    "sampler_order": [6, 0, 1, 3, 4, 2, 5],
-    #"sampler_seed": 69420,   #set the seed
-    #"sampler_full_determinism": False,     #set it so the seed determines generation content
-    "frmttriminc": False,  #?
-    "frmtrmblln": False,  #?
+    "frmttriminc": False,
+    "frmtrmblln": False,
 }
 
 
@@ -185,13 +188,12 @@ def char_to_pch(char, file, dir=None):
 
 class Conversation:
 
-    endpoint = "http://127.0.0.1:5001"
     cutoff_digits = 8
 
     def __init__(self, user, bot=""):
         self.user = user
         self.prompt_data = default_prompt
-        self.stop_sequence = ["{{user}}:", "\n{{user}} "]
+        self.stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
 #        self.stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
         self.set_bot(bot)
 
@@ -204,7 +206,7 @@ class Conversation:
         memory = self.parse_vars(memory)
         self.prompt_data["memory"] = memory
         self.memory_tokens = self.count_tokens(memory)
-        self.log = f"log/aiclient_{self.botname}.log"
+        self.log = f"{conf.logdir}/aiclient_{self.botname}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.botname}")
         self.load_history()
@@ -214,20 +216,20 @@ class Conversation:
         return eval_template(text, context)
 
     def abort(self):
-        requests.post(f"{self.endpoint}/api/extra/abort")
+        requests.post(f"{conf.endpoint}/api/extra/abort")
 
     def status(self):
         """ Get status of KoboldCpp
         Result: last_process, last_eval, last_token_count, total_gens, queue, idle,
         stop_reason (INVALID=-1, OUT_OF_TOKENS=0, EOS_TOKEN=1, CUSTOM_STOPPER=2)
         """
-        response = requests.get(f"{self.endpoint}/api/extra/perf")
+        response = requests.get(f"{conf.endpoint}/api/extra/perf")
         if response.status_code != 200:
             raise IOError("Can not get status from engine")
         return response.json()
 
     def count_tokens(self, text):
-        response = requests.post(f"{self.endpoint}/api/extra/tokencount",
+        response = requests.post(f"{conf.endpoint}/api/extra/tokencount",
             json={"prompt": text})
         if response.status_code != 200:
             raise IOError("Can not get get token count from engine")
@@ -331,7 +333,7 @@ class Conversation:
 
     def get_stream(self):
         jprompt = self.get_json_prompt()
-        response = requests.post(f"{self.endpoint}/api/extra/generate/stream",
+        response = requests.post(f"{conf.endpoint}/api/extra/generate/stream",
             json=jprompt, stream=True)
         if response.status_code != 200:
             raise IOError("Can not get response stream from engine")
@@ -357,6 +359,17 @@ class Conversation:
         stop_reason = self.status()['stop_reason']
         return response, stop_reason
 
+    def to_readline(self, response):
+        if len(self.prompt) and self.prompt[-1] != "\n":
+            pos = self.prompt.rfind("\n")  # -1 is ok
+            text = self.prompt[pos+1:] + response
+        else:
+            text = response
+        for line in text.splitlines():
+            if line != "":
+                readline.add_history(line)
+        readline.add_history(text.replace("\n", " "))
+
     def stream_response(self, message):
         self.to_prompt(message)
         response, stop_reason = self.read_stream()
@@ -369,6 +382,7 @@ class Conversation:
                     break
         #else:  # 0=out of tokens, 1=eos token, -1=invalid
 #        response = response.rstrip()+"\n"
+        self.to_readline(response)
         self.to_prompt(response)
 
     def post(self, message):
@@ -421,7 +435,7 @@ Ctrl-z     - exit
                     print(f.name)
         elif message.startswith("/load"):
             name = message.partition(" ")[2].strip()
-            conf.set("last_char", name)
+            conf.set("lastchar", name)
             char = load_char(name)
             self.set_bot(char)
         elif message.startswith("/clear"):
@@ -479,7 +493,9 @@ Ctrl-z     - exit
                 self.truncate_history()
             elif newlines < 2:
                 prefix = "\n"*(2-newlines)
-            message = f"{self.user}: {message}"
+# test if User:/Char: tags mess llm logic
+#            if message.startswith('"'):
+#                message = f"{self.user}: {message}"
             message = prefix + wrap_text(message)
             if message.endswith("+"):
                 message = message[:-1]
@@ -500,7 +516,11 @@ def talk(bot):
             mode = "+"
             print()
         try:
-            message = input(f"{chat.user} {mode}> ")
+            start = time.time()
+            while True:
+                message = input(f"{chat.user} {mode}> ")
+                if time.time()-start > 0.5:
+                    break
             chat.add_message(message)
         except KeyboardInterrupt:
             input("\nEnter to continue, Ctrl+C second time to exit.")
@@ -510,7 +530,7 @@ def talk(bot):
 
 
 conf.load()
-char = conf.last_char
+char = conf.lastchar
 if char != "":
     char = load_char(char)
 
@@ -518,8 +538,8 @@ args = sys.argv[1:]
 while args:
     arg = args.pop(0)
     if arg in ("-c", "--char"):
-        conf.set("last_char", args.pop(0))
-        char = load_char(conf.last_char)
+        conf.set("lastchar", args.pop(0))
+        char = load_char(conf.lastchar)
     elif arg in ("-j", "--json"):
         char_to_json(char, args.pop(0))
         sys.exit()

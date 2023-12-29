@@ -1,5 +1,12 @@
 # talk2kobold changelog
 
+## 2023.12.27
+
+- Integrate Settings class fully.
+- Add time measurement to input, discard too fast input
+    (helps with pasted text unexpected newlines).
+- Add engine-generated text to readline history.
+
 ## 2023.12.23
 
 - Got puzzled with llm in wrong format not working with koboldcpp
