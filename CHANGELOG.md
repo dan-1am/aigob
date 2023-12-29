@@ -1,5 +1,12 @@
 # talk2kobold changelog
 
+## 2023.12.30
+
+- settings smart save
+- disable settings autosave for now (except if .conf is missing)
+- new settings: engine, stop_sequence
+- new command: /saveconf
+
 ## 2023.12.27
 
 - Integrate Settings class fully.

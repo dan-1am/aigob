@@ -12,25 +12,76 @@ import time
 import requests
 
 
+engine_settings = {
+#    "stop_sequence": ["You:", "\nYou ", "\n\n"],
+    "use_story": False,
+    "use_memory": True,
+    "use_default_badwordsids": False,
+    "use_authors_note": False,
+    "use_world_info": False,
+    "quiet": True,
+    "singleline": False,
+
+    "genkey": "KCPP1912",
+    "max_context_length": 4096,
+    "max_length": 16,
+    "n": 1,
+    #"sampler_seed": 69420,   #set the seed
+    #"sampler_full_determinism": False,     #set it so the seed determines generation content
+
+#    "temperature": 0.7,
+    "temperature": 0.8,
+    "mirostat": 2,
+    "mirostat_tau": 5.0,
+    "mirostat_eta": 0.1,
+
+    "sampler_order": [6, 0, 1, 3, 4, 2, 5],
+    "rep_pen": 1.1,
+    "rep_pen_range": 320,
+    "rep_pen_slope": 0.7,
+    "tfs": 1,
+    "top_a": 0,
+    "top_k": 100,
+    "top_p": 0.92,
+    "typical": 1,
+    "min_p": 0,
+    "frmttriminc": False,
+    "frmtrmblln": False,
+}
+
+
 class Settings:
     _conffile = "talk2kobold.conf"
     chardir = "chars"
     logdir = "log"
     endpoint = "http://127.0.0.1:5001"
     lastchar = ""
+    stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
+#    stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
+    engine = engine_settings
 
     def set(self, var, value):
         setattr(self, var, value)
-        self.save()
+#        self.save()
+
+    def save(self):
+        opts = {name: value
+            for name in dir(self)
+            if not name.startswith("_")
+            if not callable(value := getattr(self, name))
+        }
+        opts['engine'] = self.engine.copy()
+        for name in ("history", "prompt", "stop_sequence"):
+            opts['engine'].pop(name, None)
+        with open(self._conffile, "w") as f:
+            json.dump(opts, f, indent=4)
 
     def load(self):
         if Path(self._conffile).is_file():
             with open(self._conffile, "r") as f:
                 self.__dict__ = json.load(f)
-
-    def save(self):
-        with open(self._conffile, "w") as f:
-            json.dump(self.__dict__, f)
+        else:
+            self.save()
 
 
 conf = Settings()
@@ -68,46 +119,6 @@ def wrap_text(txt, width=72):
         result.append(txt[:pos].rstrip())
         txt = txt[pos:]
     return "\n".join(result)
-
-
-default_prompt = {
-    "memory": "",
-    "prompt": "",
-    "stop_sequence": ["You:", "\nYou ", "\n\n"],
-    "use_story": False,
-    "use_memory": True,
-    "use_default_badwordsids": False,
-    "use_authors_note": False,
-    "use_world_info": False,
-    "quiet": True,
-
-    "max_context_length": 4096,
-#    "max_context_length": 2048,
-    "max_length": 16,
-    "rep_pen": 1.1,
-    "rep_pen_range": 320,
-    "rep_pen_slope": 0.7,
-    "sampler_order": [6, 0, 1, 3, 4, 2, 5],
-    #"sampler_seed": 69420,   #set the seed
-    #"sampler_full_determinism": False,     #set it so the seed determines generation content
-
-    "singleline": False,
-    "n": 1,
-#    "temperature": 0.7,
-    "temperature": 0.8,
-    "tfs": 1,
-    "top_a": 0,
-    "top_k": 100,
-    "top_p": 0.92,
-    "typical": 1,
-    "min_p": 0,
-    "mirostat": 2,
-    "mirostat_tau": 5.0,
-    "mirostat_eta": 0.1,
-    "genkey": "KCPP1912",
-    "frmttriminc": False,
-    "frmtrmblln": False,
-}
 
 
 assistant=dict(
@@ -192,9 +203,7 @@ class Conversation:
 
     def __init__(self, user, bot=""):
         self.user = user
-        self.prompt_data = default_prompt
-        self.stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
-#        self.stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
+        self.prompt_data = conf.engine
         self.set_bot(bot)
 
     def set_bot(self, bot=""):
@@ -326,7 +335,7 @@ class Conversation:
 
     def get_json_prompt(self):
         context = dict(user=self.user, char=self.botname)
-        stop = [eval_template(s, context) for s in self.stop_sequence]
+        stop = [eval_template(s, context) for s in conf.stop_sequence]
         self.prompt_data["stop_sequence"] = stop
         self.prompt_data["prompt"] = self.prompt[self.cutoff:]
         return self.prompt_data
@@ -400,6 +409,7 @@ class Conversation:
 
     def help(self):
         print("""Help:
+/saveconf  - save configuration
 /ls        - list all chars
 /load char - load new char
 /clear     - clear history
@@ -429,6 +439,8 @@ Ctrl-z     - exit
             memt2 = self.count_tokens(mem+"\n\n")
             memt3 = self.count_tokens(mem+"\n\n\n")
             print(f"tokens: {memtm=} {memt0=} {memt1=} {memt2=} {memt3=}")
+        elif message == "/saveconf":
+            conf.save()
         elif message == "/ls":
             for f in Path(conf.chardir).iterdir():
                 if f.suffix in (".json", ".pch"):
@@ -550,3 +562,5 @@ while args:
         raise NameError(f"Error: unknown option {arg}")
 
 talk(char)
+
+#conf.save()
