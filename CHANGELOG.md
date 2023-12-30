@@ -1,11 +1,17 @@
 # talk2kobold changelog
 
+## 2023.12.31
+
+- Remove prompt from Conversation, keep current vars in settings
+    and generate prompt dynamically.
+- Configuration loader now checks keys for existance (recursive).
+
 ## 2023.12.30
 
-- settings smart save
-- disable settings autosave for now (except if .conf is missing)
-- new settings: engine, stop_sequence
-- new command: /saveconf
+- Settings smart save
+- Disable settings autosave for now (except if .conf is missing)
+- New settings: engine, stop_sequence
+- New command: /saveconf
 
 ## 2023.12.27
 

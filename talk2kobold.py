@@ -12,6 +12,42 @@ import time
 import requests
 
 
+
+def tolog(txt):
+    with open("aiclient_debug.log","a") as f:
+        f.write(txt)
+
+
+def eval_template(template, context):
+    return re.sub(r'\{\{(.*?)\}\}',
+        lambda m: str( eval(m[1], context) ), template)
+
+
+def count_newlines(text):
+    i = len(text)
+    while text[i-1] == "\n":
+        i -= 1
+    return len(text)-i
+
+
+def wrap_text(txt, width=72):
+    txt = txt.replace("\n", " ")
+    txt = re.sub("\s{2,}", " ", txt)
+    result = []
+    while len(txt):
+        pos = width
+        if len(txt) <= pos:
+            result.append(txt.rstrip())
+            break
+        pos2 = txt.rfind(" ", 0, pos+1)
+        if pos2 >= 0:
+            pos = pos2+1
+        result.append(txt[:pos].rstrip())
+        txt = txt[pos:]
+    return "\n".join(result)
+
+
+
 engine_settings = {
 #    "stop_sequence": ["You:", "\nYou ", "\n\n"],
     "use_story": False,
@@ -50,6 +86,17 @@ engine_settings = {
 }
 
 
+def deep_update(storage, data):
+    for name,value in data.items():
+        old = storage.get(name, None)
+        if old is None:
+            raise KeyError(f"Wrong key {name} = {value} in options.")
+        if getattr(old, "keys", None):
+            deep_update(old, value)
+        else:
+            storage[name] = value
+
+
 class Settings:
     _conffile = "talk2kobold.conf"
     chardir = "chars"
@@ -63,6 +110,16 @@ class Settings:
     def set(self, var, value):
         setattr(self, var, value)
 #        self.save()
+
+    def update(self, new):
+        for name,value in new.items():
+            old = getattr(self, name, None)
+            if old is None:
+                raise KeyError(f"Wrong key {name} = {value} in options.")
+            if getattr(old, "keys", None):
+                deep_update(old, value)
+            else:
+                setattr(self, name, value)
 
     def save(self):
         opts = {name: value
@@ -79,7 +136,9 @@ class Settings:
     def load(self):
         if Path(self._conffile).is_file():
             with open(self._conffile, "r") as f:
-                self.__dict__ = json.load(f)
+#                self.__dict__ = json.load(f)
+                loaded = json.load(f)
+            self.update(loaded)
         else:
             self.save()
 
@@ -87,39 +146,8 @@ class Settings:
 conf = Settings()
 
 
-def tolog(txt):
-    with open("aiclient_debug.log","a") as f:
-        f.write(txt)
 
-
-def eval_template(template, context):
-    return re.sub(r'\{\{(.*?)\}\}',
-        lambda m: str( eval(m[1], context) ), template)
-
-
-def count_newlines(text):
-    i = len(text)
-    while text[i-1] == "\n":
-        i -= 1
-    return len(text)-i
-
-
-def wrap_text(txt, width=72):
-    txt = txt.replace("\n", " ")
-    txt = re.sub("\s{2,}", " ", txt)
-    result = []
-    while len(txt):
-        pos = width
-        if len(txt) <= pos:
-            result.append(txt.rstrip())
-            break
-        pos2 = txt.rfind(" ", 0, pos+1)
-        if pos2 >= 0:
-            pos = pos2+1
-        result.append(txt[:pos].rstrip())
-        txt = txt[pos:]
-    return "\n".join(result)
-
+################ char
 
 assistant=dict(
     name="Assistant",
@@ -196,6 +224,9 @@ def char_to_pch(char, file, dir=None):
     with open(f"{dir}/{file}", "w") as f:
         f.write(text)
 
+################
+
+
 
 class Conversation:
 
@@ -203,7 +234,7 @@ class Conversation:
 
     def __init__(self, user, bot=""):
         self.user = user
-        self.prompt_data = conf.engine
+#        self.prompt_data = conf.engine
         self.set_bot(bot)
 
     def set_bot(self, bot=""):
@@ -213,7 +244,7 @@ class Conversation:
         self.bot = bot
         memory = "\n".join((bot["description"], bot["scenario"], bot["example_dialogue"])) + "\n" #!!!
         memory = self.parse_vars(memory)
-        self.prompt_data["memory"] = memory
+        self.memory = memory
         self.memory_tokens = self.count_tokens(memory)
         self.log = f"{conf.logdir}/aiclient_{self.botname}.log"
         print("\n\n", "#"*32, sep="")
@@ -270,7 +301,7 @@ class Conversation:
                 self.store_cutoff(file)
         if self.prompt == "":
             print("History is empty, starting new conversation.\n")
-            # "\n" for avoid failing first context shift:
+            # first "\n" to avoid failing first context shift:
             first = "\n"+self.parse_vars( self.bot['char_greeting'] )+"\n\n"
             self.to_prompt(first)
         else:
@@ -323,9 +354,9 @@ class Conversation:
 
     def to_prompt(self, message):
         self.prompt += message
-        max_ctx = self.prompt_data['max_context_length'] - self.memory_tokens
+        max_ctx = conf.engine["max_context_length"] - self.memory_tokens
         now = self.count_tokens(self.prompt[self.cutoff:])
-        extra = now-(max_ctx-10-self.prompt_data['max_length'])
+        extra = now-(max_ctx-10-conf.engine["max_length"])
 #        tolog(f'tokens: {extra=}, {now} < {max_ctx}, memory={self.memory_tokens}\n')
         if extra > 0:
             self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
@@ -335,10 +366,14 @@ class Conversation:
 
     def get_json_prompt(self):
         context = dict(user=self.user, char=self.botname)
-        stop = [eval_template(s, context) for s in conf.stop_sequence]
-        self.prompt_data["stop_sequence"] = stop
-        self.prompt_data["prompt"] = self.prompt[self.cutoff:]
-        return self.prompt_data
+        self.stop_parsed = [eval_template(s, context) for s in conf.stop_sequence]
+        prompt_data = dict(conf.engine)
+        prompt_data.update(
+            stop_sequence=self.stop_parsed,
+            memory=self.memory,
+            prompt=self.prompt[self.cutoff:],
+        )
+        return prompt_data
 
     def get_stream(self):
         jprompt = self.get_json_prompt()
@@ -383,7 +418,7 @@ class Conversation:
         self.to_prompt(message)
         response, stop_reason = self.read_stream()
         if stop_reason == 2:  # custom stopper == stop word?
-            for suffix in self.prompt_data['stop_sequence']:
+            for suffix in self.stop_parsed:
                 if response.endswith(suffix):
                     response = response.removesuffix(suffix)
                     if suffix.startswith("\n") or suffix.endswith("\n"):
@@ -430,15 +465,7 @@ Ctrl-z     - exit
         elif message.startswith( ("/h", "/help") ):
             self.help()
         elif message == "/test":
-            mem = self.prompt_data["memory"]
-            prompt = self.prompt[self.cutoff:]
-            memtm = self.count_tokens(mem[:-1])
-            memt0 = self.count_tokens(mem)
-#            memt1 = self.count_tokens(mem+prompt[:1])
-            memt1 = self.count_tokens(mem+"\n")
-            memt2 = self.count_tokens(mem+"\n\n")
-            memt3 = self.count_tokens(mem+"\n\n\n")
-            print(f"tokens: {memtm=} {memt0=} {memt1=} {memt2=} {memt3=}")
+            print(f"test")
         elif message == "/saveconf":
             conf.save()
         elif message == "/ls":
@@ -462,8 +489,8 @@ Ctrl-z     - exit
         elif message.startswith("/set"):
             args = message.split()
             if len(args) == 1:
-                for k,v in self.prompt_data.items():
-                    print(f"{k}={v}\n")
+                for k,v in conf.engine.items():
+                    print(f"{k}={v}")
             else:
                 if len(args) != 3:
                     print("Error: set need 2 parameters.")
@@ -471,8 +498,8 @@ Ctrl-z     - exit
                     _,var,value = args
                     if value.isdigit():
                         value = int(value)
-                    if self.prompt_data.get(var, None) is not None:
-                        self.prompt_data[var] = value
+                    if conf.engine.get(var, None) is not None:
+                        conf.engine[var] = value
                     else:
                         print("Var not exists.")
         else:
