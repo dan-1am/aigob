@@ -1,5 +1,9 @@
 # talk2kobold changelog
 
+## 2024.01.01
+
+- Separate engine functions from Conversation.
+
 ## 2023.12.31
 
 - Remove prompt from Conversation, keep current vars in settings

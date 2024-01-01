@@ -13,6 +13,8 @@ import requests
 
 
 
+################ Misc
+
 def tolog(txt):
     with open("aiclient_debug.log","a") as f:
         f.write(txt)
@@ -46,7 +48,11 @@ def wrap_text(txt, width=72):
         txt = txt[pos:]
     return "\n".join(result)
 
+################
 
+
+
+################ Settings
 
 engine_settings = {
 #    "stop_sequence": ["You:", "\nYou ", "\n\n"],
@@ -144,6 +150,75 @@ class Settings:
 
 
 conf = Settings()
+
+################
+
+
+
+################ llm api
+
+def engine_abort():
+    requests.post(f"{conf.endpoint}/api/extra/abort")
+
+
+def engine_status():
+    """ Get status of KoboldCpp
+    Result: last_process, last_eval, last_token_count, total_gens, queue, idle,
+    stop_reason (INVALID=-1, OUT_OF_TOKENS=0, EOS_TOKEN=1, CUSTOM_STOPPER=2)
+    """
+    response = requests.get(f"{conf.endpoint}/api/extra/perf")
+    if response.status_code != 200:
+        raise IOError("Can not get status from engine")
+    return response.json()
+
+
+def engine_stop_reason():
+    return engine_status()['stop_reason']
+
+
+def count_tokens(text):
+    response = requests.post(f"{conf.endpoint}/api/extra/tokencount",
+        json={"prompt": text})
+    if response.status_code != 200:
+        raise IOError("Can not get get token count from engine")
+    return response.json()['value']
+
+
+def find_token_start(text, pos):
+    if pos == 0:
+        n = 0
+    else:
+        n = count_tokens(text[:pos])
+    while n == count_tokens(text[:pos+1]):
+        pos += 1
+    return pos
+
+
+def get_stream(json_prompt):
+#    jprompt = self.get_json_prompt()
+    response = requests.post(f"{conf.endpoint}/api/extra/generate/stream",
+        json=json_prompt, stream=True)
+    if response.status_code != 200:
+        raise IOError("Can not get response stream from engine")
+    if response.encoding is None:
+        response.encoding = 'utf-8'
+    return response.iter_lines(chunk_size=20, decode_unicode=True)
+
+def engine_query_stream(json_prompt):
+    is_message = False
+    for line in get_stream(json_prompt):
+        if line:  #filter out keep-alive new lines
+            if is_message:
+                if line.startswith("data:"):
+                    jresponse = json.loads(line.removeprefix("data: "))
+                    token = jresponse['token']
+                    yield token
+                    is_message = False
+            else:
+                if line == "event: message":
+                    is_message = True
+
+################
 
 
 
@@ -245,7 +320,7 @@ class Conversation:
         memory = "\n".join((bot["description"], bot["scenario"], bot["example_dialogue"])) + "\n" #!!!
         memory = self.parse_vars(memory)
         self.memory = memory
-        self.memory_tokens = self.count_tokens(memory)
+        self.memory_tokens = count_tokens(memory)
         self.log = f"{conf.logdir}/aiclient_{self.botname}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.botname}")
@@ -254,35 +329,6 @@ class Conversation:
     def parse_vars(self, text):
         context = dict(user=self.user, char=self.botname)
         return eval_template(text, context)
-
-    def abort(self):
-        requests.post(f"{conf.endpoint}/api/extra/abort")
-
-    def status(self):
-        """ Get status of KoboldCpp
-        Result: last_process, last_eval, last_token_count, total_gens, queue, idle,
-        stop_reason (INVALID=-1, OUT_OF_TOKENS=0, EOS_TOKEN=1, CUSTOM_STOPPER=2)
-        """
-        response = requests.get(f"{conf.endpoint}/api/extra/perf")
-        if response.status_code != 200:
-            raise IOError("Can not get status from engine")
-        return response.json()
-
-    def count_tokens(self, text):
-        response = requests.post(f"{conf.endpoint}/api/extra/tokencount",
-            json={"prompt": text})
-        if response.status_code != 200:
-            raise IOError("Can not get get token count from engine")
-        return response.json()['value']
-
-    def find_token(self, text, pos):
-        if pos == 0:
-            n = 0
-        else:
-            n = self.count_tokens(text[:pos])
-        while n == self.count_tokens(text[:pos+1]):
-            pos += 1
-        return pos
 
     def store_cutoff(self, file):
         file.write(f"\n{self.cutoff:0{self.cutoff_digits}}")
@@ -340,7 +386,7 @@ class Conversation:
                 pos = pos2+len(end)-1  #!!!
                 break
         else:
-            pos = pos + self.find_token(self.prompt[pos:], 0)
+            pos = pos + find_token_start(self.prompt[pos:], 0)
 #        tolog(f'{shift=} cutting={pos-self.cutoff}\n\ncut=[{self.prompt[self.cutoff:pos]}]\n\nnew_start=[{self.prompt[pos:pos+60]}]...\n')
         self.cutoff = pos
 
@@ -355,7 +401,7 @@ class Conversation:
     def to_prompt(self, message):
         self.prompt += message
         max_ctx = conf.engine["max_context_length"] - self.memory_tokens
-        now = self.count_tokens(self.prompt[self.cutoff:])
+        now = count_tokens(self.prompt[self.cutoff:])
         extra = now-(max_ctx-10-conf.engine["max_length"])
 #        tolog(f'tokens: {extra=}, {now} < {max_ctx}, memory={self.memory_tokens}\n')
         if extra > 0:
@@ -375,33 +421,12 @@ class Conversation:
         )
         return prompt_data
 
-    def get_stream(self):
-        jprompt = self.get_json_prompt()
-        response = requests.post(f"{conf.endpoint}/api/extra/generate/stream",
-            json=jprompt, stream=True)
-        if response.status_code != 200:
-            raise IOError("Can not get response stream from engine")
-        if response.encoding is None:
-            response.encoding = 'utf-8'
-        return response.iter_lines(chunk_size=20, decode_unicode=True)
-
     def read_stream(self):
         response = ""
-        mode = None
-        for line in self.get_stream():
-            if line:  #filter out keep-alive new lines
-                if mode is None:
-                    if line == "event: message":
-                        mode = "message"
-                elif mode == "message":
-                    if line.startswith("data:"):
-                        jresponse = json.loads(line.removeprefix("data: "))
-                        token = jresponse['token']
-                        response += token
-                        print(token, end="", flush=True)
-                        mode = None
-        stop_reason = self.status()['stop_reason']
-        return response, stop_reason
+        for token in engine_query_stream( self.get_json_prompt() ):
+            response += token
+            print(token, end="", flush=True)
+        return response, engine_stop_reason()
 
     def to_readline(self, response):
         if len(self.prompt) and self.prompt[-1] != "\n":
@@ -431,8 +456,8 @@ class Conversation:
 
     def post(self, message):
         try:
-#            if not self.status()['idle']:
-#                self.abort()
+#            if not engine_status()['idle']:
+#                engine_abort()
             self.stream_response(message)
         except IOError:
             print("Error: can not send message.")
@@ -461,7 +486,7 @@ Ctrl-z     - exit
 
     def command_message(self, message):
         if message == "/stop":
-            self.abort()
+            engine_abort()
         elif message.startswith( ("/h", "/help") ):
             self.help()
         elif message == "/test":
