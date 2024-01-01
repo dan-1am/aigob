@@ -170,6 +170,7 @@ class Settings:
     chardir = "chars"
     logdir = "log"
     endpoint = "http://127.0.0.1:5001"
+    textmode = "chat"
     lastchar = ""
     stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
 #    stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
@@ -559,6 +560,7 @@ Ctrl+c     - while receiving llm answer: cancel
 Ctrl-z     - exit
 /set var value - set engine variable
 /set       - list engine variables
+/set textmode chat/text - mode of conversation
 """     )
 
     def command_message(self, message):
@@ -635,8 +637,8 @@ Ctrl-z     - exit
             elif newlines < 2:
                 prefix = "\n"*(2-newlines)
 # test if User:/Char: tags mess llm logic
-#            if message.startswith('"'):
-#                message = f"{self.user}: {message}"
+            if conf.textmode == "chat":
+                message = f"{self.user}: {message}"
             message = prefix + wrap_text(message)
             if message.endswith("+"):
                 message = message[:-1]
@@ -659,7 +661,11 @@ def talk(bot):
         try:
             start = time.time()
             while True:
-                message = input(f"{chat.user} {mode}> ")
+                if conf.textmode == "chat":
+                    prefix = f"{chat.user} "
+                else:
+                    prefix = ""
+                message = input(f"{prefix}{mode}> ")
                 if time.time()-start > 0.5:
                     break
             chat.add_message(message)
