@@ -166,6 +166,7 @@ def deep_update(storage, data):
 
 class Settings:
     _conffile = "talk2kobold.conf"
+    save_on_exit = True
     chardir = "chars"
     logdir = "log"
     endpoint = "http://127.0.0.1:5001"
@@ -691,4 +692,5 @@ while args:
 
 talk(char)
 
-#conf.save()
+if conf.save_on_exit:
+    conf.save()
