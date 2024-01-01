@@ -204,6 +204,7 @@ def get_stream(json_prompt):
         response.encoding = 'utf-8'
     return response.iter_lines(chunk_size=20, decode_unicode=True)
 
+
 def engine_query_stream(json_prompt):
     is_message = False
     for line in get_stream(json_prompt):
@@ -303,14 +304,70 @@ def char_to_pch(char, file, dir=None):
 
 
 
-class Conversation:
+################ history
 
-    cutoff_digits = 8
+cutoff_digits = 8
+
+def store_cutoff(file, cutoff):
+    file.write(f"\n{cutoff:0{cutoff_digits}}")
+
+
+def load_history(file_name):
+    with open(file_name, "a+") as file:
+        file.seek(0)
+        text = file.read()
+        field = text[-cutoff_digits:]
+        if field.isdecimal():
+            cutoff = int(field)
+            history = text[:-cutoff_digits-1]
+        else:
+            cutoff = 0
+            history = text
+            store_cutoff(file, cutoff)
+    return history, cutoff
+
+
+def to_history(file_name, msg, cutoff):
+    with open(file_name, "r+") as f:
+        f.seek(0, os.SEEK_END)
+        end = f.tell()
+        if end > cutoff_digits:
+            f.seek(end-cutoff_digits-1)
+        f.write(msg)
+        store_cutoff(f, cutoff)
+
+
+def truncate_history(file_name, size, cutoff):
+    with open(file_name, "r+") as f:
+        f.seek(size)
+        store_cutoff(f, cutoff)
+        f.truncate()
+
+################
+
+
+
+class Conversation:
 
     def __init__(self, user, bot=""):
         self.user = user
-#        self.prompt_data = conf.engine
         self.set_bot(bot)
+
+    def parse_vars(self, text):
+        context = dict(user=self.user, char=self.botname)
+        return eval_template(text, context)
+
+    def init_dialogue(self):
+        self.prompt, self.cutoff = load_history(self.log)
+        if self.prompt == "":
+            print("History is empty, starting new conversation.\n")
+            # first "\n" to avoid failing first context shift:
+            first = "\n"+self.parse_vars( self.bot['char_greeting'] )+"\n\n"
+            self.to_prompt(first)
+        else:
+            print(f"History loaded: {self.log}\n")
+            self.to_prompt("")  # shift context, if log was extended manually
+        print(self.prompt, sep="", end="", flush=True)
 
     def set_bot(self, bot=""):
         if bot == "":
@@ -324,57 +381,12 @@ class Conversation:
         self.log = f"{conf.logdir}/aiclient_{self.botname}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.botname}")
-        self.load_history()
-
-    def parse_vars(self, text):
-        context = dict(user=self.user, char=self.botname)
-        return eval_template(text, context)
-
-    def store_cutoff(self, file):
-        file.write(f"\n{self.cutoff:0{self.cutoff_digits}}")
-
-    def load_history(self):
-        with open(self.log, "a+") as file:
-            file.seek(0)
-            text = file.read()
-            field = text[-self.cutoff_digits:]
-            if field.isdecimal():
-                self.cutoff = int(field)
-                self.prompt = text[:-self.cutoff_digits-1]
-            else:
-                self.cutoff = 0
-                self.prompt = text
-                self.store_cutoff(file)
-        if self.prompt == "":
-            print("History is empty, starting new conversation.\n")
-            # first "\n" to avoid failing first context shift:
-            first = "\n"+self.parse_vars( self.bot['char_greeting'] )+"\n\n"
-            self.to_prompt(first)
-        else:
-            print(f"History loaded: {self.log}\n")
-            self.to_prompt("")  # shift context, if log was extended manually
-        print(self.prompt, sep="", end="", flush=True)
-
-    def to_history(self, msg):
-        with open(self.log, "r+") as f:
-            f.seek(0, os.SEEK_END)
-            end = f.tell()
-            if end > self.cutoff_digits:
-                f.seek(end-self.cutoff_digits-1)
-            f.write(msg)
-            self.store_cutoff(f)
-
-    def truncate_history(self):
-        with open(self.log, "r+") as f:
-            pos = len(self.prompt)
-            f.seek(pos)
-            self.store_cutoff(f)
-            f.truncate()
+        self.init_dialogue()
 
     def clear_bot(self):
         self.prompt = ""
         self.cutoff = 0
-        self.truncate_history()
+        truncate_history(self.log, len(self.prompt), self.cutoff)
         self.set_bot(self.bot)
 
     # up to 300 tokens shifts were observed, we can assume no small limit there
@@ -396,7 +408,7 @@ class Conversation:
             count -= 1
             pos = self.prompt.rfind("\n", 0, pos)
         self.prompt = self.prompt[:pos]
-        self.truncate_history()
+        truncate_history(self.log, len(self.prompt), self.cutoff)
 
     def to_prompt(self, message):
         self.prompt += message
@@ -408,7 +420,7 @@ class Conversation:
             self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
         elif message == "":
             return
-        self.to_history(message)
+        to_history(self.log, message, self.cutoff)
 
     def get_json_prompt(self):
         context = dict(user=self.user, char=self.botname)
@@ -554,7 +566,7 @@ Ctrl-z     - exit
             if newlines > 2:
                 self.prompt = self.prompt[:2-newlines]
                 # need optimization: extra file write
-                self.truncate_history()
+                truncate_history(self.log, len(self.prompt), self.cutoff)
             elif newlines < 2:
                 prefix = "\n"*(2-newlines)
 # test if User:/Char: tags mess llm logic

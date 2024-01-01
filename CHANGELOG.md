@@ -1,5 +1,9 @@
 # talk2kobold changelog
 
+## 2024.01.02
+
+- Extract history save/load from Conversation.
+
 ## 2024.01.01
 
 - Separate engine functions from Conversation.
