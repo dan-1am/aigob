@@ -170,6 +170,7 @@ class Settings:
     chardir = "chars"
     logdir = "log"
     endpoint = "http://127.0.0.1:5001"
+    username = "You"
     textmode = "chat"
     lastchar = ""
     stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
@@ -412,12 +413,12 @@ def truncate_history(file_name, size, cutoff):
 
 class Conversation:
 
-    def __init__(self, user, bot=""):
-        self.user = user
+    def __init__(self, bot=""):
+        self.username = conf.username
         self.set_bot(bot)
 
     def parse_vars(self, text):
-        context = dict(user=self.user, char=self.botname)
+        context = dict(user=self.username, char=self.botname)
         return eval_template(text, context)
 
     def parse_vars_batch(self, parts):
@@ -638,7 +639,7 @@ Ctrl-z     - exit
                 prefix = "\n"*(2-newlines)
 # test if User:/Char: tags mess llm logic
             if conf.textmode == "chat":
-                message = f"{self.user}: {message}"
+                message = f"{self.username}: {message}"
             message = prefix + wrap_text(message)
             if message.endswith("+"):
                 message = message[:-1]
@@ -650,7 +651,7 @@ Ctrl-z     - exit
 
 
 def talk(bot):
-    chat = Conversation("You", bot)
+    chat = Conversation(bot)
     while True:
         if chat.prompt == "" or chat.prompt.endswith("\n"):
             mode = ""
@@ -662,7 +663,7 @@ def talk(bot):
             start = time.time()
             while True:
                 if conf.textmode == "chat":
-                    prefix = f"{chat.user} "
+                    prefix = f"{chat.username} "
                 else:
                     prefix = ""
                 message = input(f"{prefix}{mode}> ")
