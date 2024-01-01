@@ -357,6 +357,10 @@ class Conversation:
         context = dict(user=self.user, char=self.botname)
         return eval_template(text, context)
 
+    def parse_vars_batch(self, parts):
+        context = dict(user=self.username, char=self.botname)
+        return [eval_template(text, context) for text in parts]
+
     def init_dialogue(self):
         self.prompt, self.cutoff = load_history(self.log)
         if self.prompt == "":
@@ -423,8 +427,7 @@ class Conversation:
         to_history(self.log, message, self.cutoff)
 
     def get_json_prompt(self):
-        context = dict(user=self.user, char=self.botname)
-        self.stop_parsed = [eval_template(s, context) for s in conf.stop_sequence]
+        self.stop_parsed = self.parse_vars_batch(conf.stop_sequence)
         prompt_data = dict(conf.engine)
         prompt_data.update(
             stop_sequence=self.stop_parsed,
