@@ -20,6 +20,67 @@ def tolog(txt):
         f.write(txt)
 
 
+def print_nested(store):
+    if hasattr(store, "items"):
+        for k,v in store.items():
+            print(f"{k}={v}")
+    else:
+        empty = True
+        for name in dir(store):
+            if ( not name.startswith("_")
+                    and not callable(value := getattr(store, name)) ):
+                empty = False
+                print(f"{name}={value}")
+        if empty:
+            print(store)
+
+
+def get_nested(store, name):
+    """For name=name1.name2... get store.name1[name2]..."""
+    start,_,end = name.partition(".")
+    old = getattr(store, start, None)
+    if old is None:
+        # try store[start]
+        if hasattr(store, "__getitem__"):
+            old = store.get(start, None)
+            if old is None:
+                print("Var not exists.")
+            elif end == "":
+                return old
+            else:
+                return get_nested(old, end)
+        else:
+            print("Var not exists.")
+    # store.start
+    elif end == "":
+        return old
+    else:
+        return get_nested(old, end)
+
+
+def set_nested(store, name, value):
+    """For name=name1.name2... set store.name1[name2]... to value."""
+    start,_,end = name.partition(".")
+    old = getattr(store, start, None)
+    if old is None:
+        # try store[start]
+        if hasattr(store, "__getitem__"):
+            old = store.get(start, None)
+            if old is None:
+                print("Var not exists.")
+            elif end == "":
+                store[start] = value
+            else:
+                set_nested(old, end, value)
+        else:
+            print("Var not exists.")
+    # store.start
+    elif end == "":
+        setattr(store, start, value)
+    else:
+        set_nested(old, end, value)
+
+
 def eval_template(template, context):
     return re.sub(r'\{\{(.*?)\}\}',
         lambda m: str( eval(m[1], context) ), template)
@@ -529,8 +590,11 @@ Ctrl-z     - exit
         elif message.startswith("/set"):
             args = message.split()
             if len(args) == 1:
-                for k,v in conf.engine.items():
-                    print(f"{k}={v}")
+                print_nested(conf)
+            elif len(args) == 2:
+                name = args[1]
+                value = get_nested(conf, name)
+                print_nested(value)
             else:
                 if len(args) != 3:
                     print("Error: set need 2 parameters.")
@@ -538,10 +602,7 @@ Ctrl-z     - exit
                     _,var,value = args
                     if value.isdigit():
                         value = int(value)
-                    if conf.engine.get(var, None) is not None:
-                        conf.engine[var] = value
-                    else:
-                        print("Var not exists.")
+                    set_nested(conf, var, value)
         else:
             print("Unknown command.")
 
