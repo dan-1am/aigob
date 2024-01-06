@@ -100,6 +100,21 @@ def count_newlines(text):
     return len(text)-i
 
 
+def split_to_paragraphs(text):
+    """Generator, split text maintaining its length."""
+    while True:
+        pos = text.find("\n\n")
+        if pos < 0:
+            yield text
+            break
+        cr_pos = pos+2
+        while text[cr_pos:cr_pos+1] == "\n":
+            cr_pos += 1
+        extra = cr_pos-pos-2
+        yield text[:pos]+" "*extra
+        text = text[cr_pos:]
+
+
 def wrap_text(text, width=None):
     """Wrap text to lines not exceeding width. Keep text length."""
     if width is None:
@@ -122,6 +137,16 @@ def wrap_text(text, width=None):
         result.append(text[:pos])
         text = text[pos+1:]
     return "\n".join(result)
+
+
+def reformat(text, width=None, keep_nl=True):
+    parts = split_to_paragraphs(text)
+    newtext = "\n\n".join(wrap_text(para, width) for para in parts)
+    # needed for \n before input() and for del_line
+    # ugly, to be reworked:
+    if keep_nl and text.endswith("\n") and not newtext.endswith("\n"):
+        newtext = newtext[:-1] + "\n"
+    return newtext
 
 ################
 
