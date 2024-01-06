@@ -543,13 +543,17 @@ class Conversation:
 
     def post(self, message):
         try:
-#            if not engine_status()['idle']:
-#                engine_abort()
+            #todo: maybe an option for this? May interrupt multi-user engine.
+            if not engine_status()['idle']:
+                engine_abort()
             self.stream_response(message)
         except IOError:
             print("Error: can not send message.")
         except KeyboardInterrupt:
             print()
+            #todo: maybe an option for this? May interrupt multi-user engine.
+            if not engine_status()['idle']:
+                engine_abort()
 
     def refresh_screen(self, end="", chars=2000):
         print("\n"*3, self.prompt[-chars:], end, sep="", end="")
