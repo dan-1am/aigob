@@ -93,20 +93,27 @@ def count_newlines(text):
     return len(text)-i
 
 
-def wrap_text(txt, width=72):
-    txt = txt.replace("\n", " ")
-    txt = re.sub("\s{2,}", " ", txt)
+def wrap_text(text, width=None):
+    """Wrap text to lines not exceeding width. Keep text length."""
+    if width is None:
+        width = 72
+    text = text.replace("\n", " ")
+#    text = re.sub("\s{2,}", " ", text)
     result = []
-    while len(txt):
-        pos = width
-        if len(txt) <= pos:
-            result.append(txt.rstrip())
+    while True:
+        if len(text) <= width:
+            result.append(text)
             break
-        pos2 = txt.rfind(" ", 0, pos+1)
-        if pos2 >= 0:
-            pos = pos2+1
-        result.append(txt[:pos].rstrip())
-        txt = txt[pos:]
+        pos = width+1
+        pos2 = text.rfind(" ", 0, pos)
+        if pos2 < 0:
+            pos2 = text.find(" ", pos)
+            if pos2 < 0:
+                result.append(text)
+                break
+        pos = pos2
+        result.append(text[:pos])
+        text = text[pos+1:]
     return "\n".join(result)
 
 ################
