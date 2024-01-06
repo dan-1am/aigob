@@ -514,11 +514,15 @@ class Conversation:
         self.cutoff = pos
 
     def del_prompt_lines(self, count=1):
-        pos = len(self.prompt)
+        text = self.prompt[self.cutoff:]
+        text = reformat(text)
+        pos = len(text)
         while count > 0:
             count -= 1
-            pos = self.prompt.rfind("\n", 0, pos)
-        self.prompt = self.prompt[:pos]
+            pos = text.rfind("\n", 0, pos)
+        if pos < 0:
+            pos = 0
+        self.prompt = self.prompt[:self.cutoff+pos]
         truncate_history(self.log, len(self.prompt), self.cutoff)
 
     def to_prompt(self, message):
