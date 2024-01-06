@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+import string
 import random
 import re
 import readline
@@ -18,6 +19,12 @@ import requests
 def tolog(txt):
     with open("aiclient_debug.log","a") as f:
         f.write(txt)
+
+
+def random_string(length, charset=None):
+    if charset == None:
+        charset = string.ascii_uppercase+string.digits
+    return "".join(random.choices(charset, k=length))
 
 
 def print_nested(store):
@@ -199,6 +206,9 @@ class Settings:
             else:
                 setattr(self, name, value)
 
+    def generate_key(self):
+        self.engine["genkey"] = random_string(8)
+
     def save(self):
         opts = {name: value
             for name in dir(self)
@@ -218,6 +228,7 @@ class Settings:
                 loaded = json.load(f)
             self.update(loaded)
         else:
+            self.generate_key()
             self.save()
 
 
