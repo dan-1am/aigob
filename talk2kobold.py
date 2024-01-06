@@ -590,7 +590,9 @@ class Conversation:
                 engine_abort()
 
     def refresh_screen(self, end="", chars=2000):
-        print("\n"*3, self.prompt[-chars:], end, sep="", end="")
+        text = self.prompt[-chars:]
+        text = reformat(text)
+        print("\n"*3, text, end, sep="", end="")
 
     def help(self):
         print("""Help:
@@ -663,6 +665,7 @@ Ctrl-z     - exit
         elif message == "":
             self.refresh_screen(end="")
             self.post("")
+            self.refresh_screen(end="")
         elif message == "=":
             self.to_prompt("\n")
             self.refresh_screen()
@@ -694,6 +697,7 @@ Ctrl-z     - exit
             self.refresh_screen(end="")
             print(message, end="", flush=True)
             self.post(message)
+            self.refresh_screen(end="")
 
 
 def talk(bot):
