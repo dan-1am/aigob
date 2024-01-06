@@ -475,7 +475,6 @@ class Conversation:
                 break
         else:
             pos = pos + find_token_start(self.prompt[pos:], 0)
-#        tolog(f'{shift=} cutting={pos-self.cutoff}\n\ncut=[{self.prompt[self.cutoff:pos]}]\n\nnew_start=[{self.prompt[pos:pos+60]}]...\n')
         self.cutoff = pos
 
     def del_prompt_lines(self, count=1):
@@ -491,7 +490,6 @@ class Conversation:
         max_ctx = conf.engine["max_context_length"] - self.memory_tokens
         now = count_tokens(self.prompt[self.cutoff:])
         extra = now-(max_ctx-10-conf.engine["max_length"])
-#        tolog(f'tokens: {extra=}, {now} < {max_ctx}, memory={self.memory_tokens}\n')
         if extra > 0:
             self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
         elif message == "":
@@ -529,7 +527,7 @@ class Conversation:
     def stream_response(self, message):
         self.to_prompt(message)
         response, stop_reason = self.read_stream()
-        if stop_reason == 2:  # custom stopper == stop word?
+        if stop_reason == 2:  # custom stopper == stop word
             for suffix in self.stop_parsed:
                 if response.endswith(suffix):
                     response = response.removesuffix(suffix)
