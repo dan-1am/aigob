@@ -96,7 +96,7 @@ def count_newlines(text):
 def wrap_text(text, width=None):
     """Wrap text to lines not exceeding width. Keep text length."""
     if width is None:
-        width = 72
+        width = conf.wrap_at
     text = text.replace("\n", " ")
 #    text = re.sub("\s{2,}", " ", text)
     result = []
@@ -179,6 +179,7 @@ class Settings:
     endpoint = "http://127.0.0.1:5001"
     username = "You"
     textmode = "chat"
+    wrap_at = 72
     lastchar = ""
     stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
 #    stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
