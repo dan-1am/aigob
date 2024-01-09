@@ -700,7 +700,6 @@ Ctrl-z     - exit
                 truncate_history(self.log, len(self.prompt), self.cutoff)
             elif newlines < 2:
                 prefix = "\n"*(2-newlines)
-# test if User:/Char: tags mess llm logic
             if conf.textmode == "chat":
                 message = f"{self.username}: {message}"
             message = prefix + wrap_text(message)
