@@ -93,6 +93,16 @@ def eval_template(template, context):
         lambda m: str( eval(m[1], context) ), template)
 
 
+def find_diff(old, new):
+    min_len = min(len(old), len(new))
+    for i in range(min_len):
+        if old[i] != new[i]:
+            return i
+    if len(old) != len(new):
+        return min_len
+    return -1
+
+
 def count_newlines(text):
     i = len(text)
     while text[i-1] == "\n":
