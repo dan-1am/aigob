@@ -426,40 +426,50 @@ def char_to_pch(char, file, dir=None):
 
 cutoff_digits = 8
 
+def get_cutoff(text):
+    digits = text[:cutoff_digits]
+    if len(text) < cutoff_digits or not digits.isdecimal():
+        return text, None
+    cutoff = int(digits)
+    text = text[cutoff_digits:]
+    return text, cutoff
+
+
 def store_cutoff(file, cutoff):
-    file.write(f"\n{cutoff:0{cutoff_digits}}")
+    file.seek(0)
+    file.write(f"{cutoff:0{cutoff_digits}}")
 
 
 def load_history(file_name):
-    with open(file_name, "a+") as file:
-        file.seek(0)
-        text = file.read()
-        field = text[-cutoff_digits:]
-        if field.isdecimal():
-            cutoff = int(field)
-            history = text[:-cutoff_digits-1]
-        else:
+    if not Path(file_name).is_file():
+        open(file_name, "w").close()
+    with open(file_name, "r+") as file:
+        text, cutoff = get_cutoff(file.read())
+        if cutoff is None:
             cutoff = 0
-            history = text
+            # add cutoff to history file
             store_cutoff(file, cutoff)
-    return history, cutoff
+            file.write(text)
+    return text, cutoff
 
 
-def to_history(file_name, msg, cutoff):
+def update_history(file_name, text, cutoff):
     with open(file_name, "r+") as f:
-        f.seek(0, os.SEEK_END)
-        end = f.tell()
-        if end > cutoff_digits:
-            f.seek(end-cutoff_digits-1)
-        f.write(msg)
-        store_cutoff(f, cutoff)
-
-
-def truncate_history(file_name, size, cutoff):
-    with open(file_name, "r+") as f:
-        f.seek(size)
-        store_cutoff(f, cutoff)
-        f.truncate()
+        history, old_cutoff = get_cutoff( f.read() )
+        if old_cutoff is None:
+            store_cutoff(f, 0)
+            f.write(text)
+            f.truncate()
+            return
+        if cutoff != old_cutoff:
+            store_cutoff(f, cutoff)
+        pos = find_diff(history, text)
+        if pos >= 0:
+            filepos = cutoff_digits + len( text[:pos].encode('utf-8') )
+            # todo: not working for os.linesep > 1
+            f.seek(filepos)
+            f.write(text[pos:])
+            f.truncate()
 
 ################
 
@@ -508,7 +518,7 @@ class Conversation:
     def clear_bot(self):
         self.prompt = ""
         self.cutoff = 0
-        truncate_history(self.log, len(self.prompt), self.cutoff)
+        update_history(self.log, self.prompt, self.cutoff)
         self.set_bot(self.bot)
 
     # up to 300 tokens shifts were observed, we can assume no small limit there
@@ -533,7 +543,7 @@ class Conversation:
         if pos < 0:
             pos = 0
         self.prompt = self.prompt[:self.cutoff+pos]
-        truncate_history(self.log, len(self.prompt), self.cutoff)
+        update_history(self.log, self.prompt, self.cutoff)
 
     def to_prompt(self, message):
         self.prompt += message
@@ -544,7 +554,7 @@ class Conversation:
             self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
         elif message == "":
             return
-        to_history(self.log, message, self.cutoff)
+        update_history(self.log, self.prompt, self.cutoff)
 
     def get_json_prompt(self):
         self.stop_parsed = self.parse_vars_batch(conf.stop_sequence)
@@ -695,9 +705,8 @@ Ctrl-z     - exit
             newlines = count_newlines(self.prompt)
             prefix = ""
             if newlines > 2:
+                # unsaved prompt, update_history() needed later
                 self.prompt = self.prompt[:2-newlines]
-                # need optimization: extra file write
-                truncate_history(self.log, len(self.prompt), self.cutoff)
             elif newlines < 2:
                 prefix = "\n"*(2-newlines)
             if conf.textmode == "chat":
