@@ -697,8 +697,11 @@ Ctrl-z     - exit
             self.del_prompt_lines()
             self.refresh_screen()
         elif message[0] == "+":
-            parts = message[1:].split("\\n")
-            message = "\n".join(wrap_text(t) for t in parts)
+            text = reformat( self.prompt[self.cutoff:].rstrip() )
+            pos = text.rfind("\n")
+            message = wrap_text( text[pos+1:] + message[1:] )
+            # unsaved prompt, update_history() needed later
+            self.prompt = self.prompt[:pos+1]
             self.to_prompt(message)
             self.refresh_screen()
         else:
