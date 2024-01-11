@@ -480,6 +480,7 @@ class Conversation:
 
     def __init__(self, bot=""):
         self.username = conf.username
+        self.stop_reason = 0
         self.set_bot(bot)
 
     def parse_vars(self, text):
@@ -572,7 +573,8 @@ class Conversation:
         for token in engine_query_stream( self.get_json_prompt() ):
             response += token
             print(token, end="", flush=True)
-        return response, engine_stop_reason()
+        self.stop_reason = engine_stop_reason()
+        return response
 
     def to_readline(self, response):
         if len(self.prompt) and self.prompt[-1] != "\n":
@@ -587,8 +589,8 @@ class Conversation:
 
     def stream_response(self, message):
         self.to_prompt(message)
-        response, stop_reason = self.read_stream()
-        if stop_reason == 2:  # custom stopper == stop word
+        response = self.read_stream()
+        if self.stop_reason == 2:  # custom stopper == stop word
             for suffix in self.stop_parsed:
                 if response.endswith(suffix):
                     response = response.removesuffix(suffix)
