@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import string
+import subprocess
 import random
 import re
 import readline
@@ -682,10 +683,33 @@ Ctrl-z     - exit
         else:
             print("Unknown command.")
 
+    def use_editor(self):
+        text = reformat( self.prompt[self.cutoff:] )
+        file_to_edit = "/tmp/t2k"+random_string(8)
+        with open(file_to_edit, "w") as f:
+            f.write(text)
+        subprocess.run(['mcedit', file_to_edit+":99999"])
+        with open(file_to_edit) as f:
+            new = f.read()
+        Path(file_to_edit).unlink(missing_ok=True)
+        diff = find_diff(text, new)
+        if diff >= 0:
+            if self.cutoff+diff < len(self.prompt):
+                # unsaved prompt cut, need update_history later
+                self.prompt = self.prompt[:self.cutoff+diff]
+            add = new[diff:]
+            if add.strip().startswith("/"):
+                self.command_message(add.strip())
+            else:
+                self.to_prompt(add)
+
     def add_message(self, message):
 #        unfinished = len(self.prompt) and self.prompt[-1:] != "\n"
         if message.startswith("/"):
             self.command_message(message)
+        elif message == "@":
+            self.use_editor()
+            self.refresh_screen(end="")
         elif message == "":
             self.refresh_screen(end="")
             self.post("")
