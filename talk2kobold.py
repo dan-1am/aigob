@@ -223,6 +223,7 @@ class Settings:
     username = "You"
     textmode = "chat"
     wrap_at = 72
+    gen_until_end = True
     lastchar = ""
     stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
 #    stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
@@ -589,18 +590,21 @@ class Conversation:
 
     def stream_response(self, message):
         self.to_prompt(message)
-        response = self.read_stream()
-        if self.stop_reason == 2:  # custom stopper == stop word
-            for suffix in self.stop_parsed:
-                if response.endswith(suffix):
-                    response = response.removesuffix(suffix)
-                    if suffix.startswith("\n") or suffix.endswith("\n"):
-                        response += "\n"
-                    break
+        while True:
+            response = self.read_stream()
+            if self.stop_reason == 2:  # custom stopper == stop word
+                for suffix in self.stop_parsed:
+                    if response.endswith(suffix):
+                        response = response.removesuffix(suffix)
+                        if suffix.startswith("\n") or suffix.endswith("\n"):
+                            response += "\n"
+                        break
         #else:  # 0=out of tokens, 1=eos token, -1=invalid
 #        response = response.rstrip()+"\n"
-        self.to_readline(response)
-        self.to_prompt(response)
+            self.to_readline(response)
+            self.to_prompt(response)
+            if not( conf.gen_until_end and self.stop_reason == 0 ):
+                break
 
     def post(self, message):
         try:
