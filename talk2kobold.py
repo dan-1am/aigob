@@ -739,6 +739,11 @@ Ctrl-z  -exit
         else:
             print("Error: set need at most 2 parameters.")
 
+    @chat_cmd
+    def cmd_exit(self, params):
+        """cmd -exit program."""
+        raise SystemExit
+
     def command_message(self, message):
         params = message.split(maxsplit=1)
         cmd = params[0][1:]
@@ -839,6 +844,8 @@ def talk(bot):
             input("\nEnter to continue, Ctrl+C second time to exit.")
         except EOFError:
             print("End of input, exiting...")
+            break
+        except SystemExit:
             break
 
 
