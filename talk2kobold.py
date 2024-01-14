@@ -502,7 +502,7 @@ class Conversation:
         else:
             print(f"History loaded: {self.log}\n")
             self.to_prompt("")  # shift context, if log was extended manually
-        print(self.prompt, sep="", end="", flush=True)
+        self.refresh_screen(chars=8000)
 
     def set_bot(self, bot=""):
         if bot == "":
