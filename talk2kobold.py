@@ -175,7 +175,7 @@ engine_settings = {
     "quiet": True,
     "singleline": False,
 
-    "genkey": "KCPP1912",
+    "genkey": "0I3IVC7D",
     "max_context_length": 4096,
     "max_length": 16,
     "n": 1,
@@ -529,7 +529,6 @@ class Conversation:
             self.to_prompt(first)
         else:
             print(f"History loaded: {self.log}\n")
-            self.to_prompt("")  # shift context, if log was extended manually
         self.refresh_screen(chars=8000)
 
     def set_bot(self, bot=""):
