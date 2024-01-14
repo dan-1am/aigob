@@ -477,6 +477,34 @@ def update_history(file_name, text, cutoff):
 
 
 
+################ chat commands
+
+chat_commands = dict()
+
+
+def chat_cmd(f):
+    chat_commands[f.__name__[4:]] = f
+
+
+def chat_cmd_alias(name):
+    last = list( chat_commands.keys() )[-1]
+    chat_commands[name] = chat_commands[last]
+
+
+def chat_cmd_get(name):
+    return chat_commands.get(name, None)
+
+
+def chat_cmd_help():
+    parts = []
+    for name,f in chat_commands.items():
+        parts.append(f"/{name}{f.__doc__[3:]}\n")
+    return "".join(parts)
+
+################
+
+
+
 class Conversation:
 
     def __init__(self, bot=""):
@@ -627,65 +655,97 @@ class Conversation:
 
     def help(self):
         print("""Help:
-/saveconf  - save configuration
-/ls        - list all chars
-/load char - load new char
-/clear     - clear history
-"=" - add new line
-/h /help   - this help message
-/del [n] /d [n]  - delete n lines / last line
-/r         - refresh screen
-/stop      - stop answering llm engine
-Ctrl+c     - while receiving llm answer: cancel
-Ctrl-z     - exit
-/set var value - set engine variable
-/set       - list engine variables
+Ctrl+c  -while receiving llm answer: cancel
+Ctrl-z  -exit
+"="  -add new line
+"+text"  -append text to last line
+"text+"  -let llm to continue text
+"@"  -edit in external editor
 /set textmode chat/text - mode of conversation
-"""     )
+""", chat_cmd_help(), sep="", end="")
+
+    @chat_cmd
+    def cmd_help(self, params):
+        """cmd  -display help page."""
+        self.help()
+
+    chat_cmd_alias("h")
+
+    @chat_cmd
+    def cmd_stop(self, params):
+        """cmd  -command llm to stop generation."""
+        engine_abort()
+
+    @chat_cmd
+    def cmd_test(self, params):
+        """cmd  -debug."""
+        print(f"test")
+
+    @chat_cmd
+    def cmd_saveconf(self, params):
+        """cmd -save configuration to file."""
+        conf.save()
+
+    @chat_cmd
+    def cmd_ls(self, params):
+        """cmd  -list available characters."""
+        for f in Path(conf.chardir).iterdir():
+            if f.suffix in (".json", ".pch"):
+                print(f.name)
+
+    @chat_cmd
+    def cmd_load(self, params):
+        """cmd charname  -load character."""
+        name = params.strip()
+        conf.set("lastchar", name)
+        char = load_char(name)
+        self.set_bot(char)
+
+    @chat_cmd
+    def cmd_clear(self, params):
+        """cmd  -clear current character history."""
+        self.clear_bot()
+
+    @chat_cmd
+    def cmd_del(self, params):
+        """cmd count  -delete count history lines."""
+        count = params.strip()
+        count = int(count) if count.isdigit() else 1
+        self.del_prompt_lines(count)
+        self.refresh_screen()
+
+    chat_cmd_alias("d")
+
+    @chat_cmd
+    def cmd_r(self, params):
+        """cmd  -refresh screen."""
+        self.refresh_screen(chars=4000)
+
+    @chat_cmd
+    def cmd_set(self, params):
+        """cmd [name] [value] -display or set variable."""
+        args = params.split()
+        if len(params) == 0:
+            print_nested(conf)
+        elif len(args) == 1:
+            name = args[0]
+            value = get_nested(conf, name)
+            print_nested(value)
+        elif len(args) == 2:
+            var,value = args
+            if value.isdigit():
+                value = int(value)
+            set_nested(conf, var, value)
+        else:
+            print("Error: set need at most 2 parameters.")
 
     def command_message(self, message):
-        if message == "/stop":
-            engine_abort()
-        elif message.startswith( ("/h", "/help") ):
-            self.help()
-        elif message == "/test":
-            print(f"test")
-        elif message == "/saveconf":
-            conf.save()
-        elif message == "/ls":
-            for f in Path(conf.chardir).iterdir():
-                if f.suffix in (".json", ".pch"):
-                    print(f.name)
-        elif message.startswith("/load"):
-            name = message.partition(" ")[2].strip()
-            conf.set("lastchar", name)
-            char = load_char(name)
-            self.set_bot(char)
-        elif message.startswith("/clear"):
-            self.clear_bot()
-        elif message.startswith( ("/del", "/d") ):
-            count = message.partition(" ")[2].strip()
-            count = int(count) if count.isdigit() else 1
-            self.del_prompt_lines(count)
-            self.refresh_screen()
-        elif message.startswith("/r"):
-            self.refresh_screen(chars=4000)
-        elif message.startswith("/set"):
-            args = message.split()
-            if len(args) == 1:
-                print_nested(conf)
-            elif len(args) == 2:
-                name = args[1]
-                value = get_nested(conf, name)
-                print_nested(value)
-            else:
-                if len(args) != 3:
-                    print("Error: set need 2 parameters.")
-                else:
-                    _,var,value = args
-                    if value.isdigit():
-                        value = int(value)
-                    set_nested(conf, var, value)
+        params = message.split(maxsplit=1)
+        cmd = params[0][1:]
+        params = params[1] if len(params) > 1 else ""
+        f = chat_cmd_get(cmd)
+        if f:
+            f(self, params)
         else:
             print("Unknown command.")
 
