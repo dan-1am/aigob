@@ -779,6 +779,7 @@ Ctrl-z  -exit
             self.command_message(message)
         elif message == "@":
             self.use_editor()
+            update_history(self.log, self.prompt, self.cutoff)
             self.refresh_screen(end="")
         elif message == "":
             self.refresh_screen(end="")
