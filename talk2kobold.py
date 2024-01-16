@@ -456,6 +456,8 @@ def load_history(file_name):
 
 
 def update_history(file_name, text, cutoff):
+    if not Path(file_name).is_file():
+        open(file_name, "w").close()
     with open(file_name, "r+", errors="replace") as f:
         history, old_cutoff = get_cutoff( f.read() )
         if old_cutoff is None:
