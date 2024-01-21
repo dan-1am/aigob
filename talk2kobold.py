@@ -528,9 +528,20 @@ class Conversation:
             bot = assistant
         self.botname = bot["name"]
         self.bot = bot
-        memory = "\n".join((bot["description"], bot["scenario"], bot["example_dialogue"])) + "\n" #!!!
-        memory = self.parse_vars(memory)
-        self.memory = memory
+        parts = []
+        for variable,template in (
+            ('system_prompt', "{}"),
+            ('description', "Persona:\n{}"),
+            ('scenario', "[Scenario: {}]"),
+            ('post_history_instructions', "{}"),
+            ('example_dialogue', "{}"),
+        ):
+            text = bot.get(variable, "")
+            if len(text):
+                parts.append(template.format(text))
+        parts.append("***\n")
+        memory = "\n".join(parts)
+        self.memory = self.parse_vars(memory)
         self.memory_tokens = count_tokens(memory)
         self.log = f"{conf.logdir}/aiclient_{self.botname}.log"
         print("\n\n", "#"*32, sep="")
