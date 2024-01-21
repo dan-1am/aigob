@@ -459,6 +459,8 @@ class Character:
 
     @classmethod
     def load(cls, name, dir=None):
+        if name in ("", "assistant"):
+            return assistant
         if dir == None:
             dir = conf.chardir
         names = (name, name+".pch", name+".json")
@@ -674,6 +676,7 @@ Ctrl-z  -exit
 "text+"  -let llm to continue text
 "@"  -edit in external editor
 /set textmode chat/text - mode of conversation
+/load  -load Assistant character
 """
         print(head, chat_cmd_help(), sep="", end="")
 
