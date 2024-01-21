@@ -528,11 +528,11 @@ class Conversation:
         self.set_char(char)
 
     def parse_vars(self, text):
-        context = dict(user=self.username, char=self.charname)
+        context = dict(user=self.username, char=self.char['name'])
         return eval_template(text, context)
 
     def parse_vars_batch(self, parts):
-        context = dict(user=self.username, char=self.charname)
+        context = dict(user=self.username, char=self.char['name'])
         return [eval_template(text, context) for text in parts]
 
     def init_dialogue(self):
@@ -549,14 +549,13 @@ class Conversation:
     def set_char(self, char=""):
         if char == "":
             char = assistant
-        self.charname = char["name"]
         self.char = char
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
         self.memory_tokens = count_tokens(self.memory)
-        self.log = f"{conf.logdir}/aiclient_{self.charname}.log"
+        self.log = f"{conf.logdir}/aiclient_{self.char['name']}.log"
         print("\n\n", "#"*32, sep="")
-        print(f"Started character: {self.charname}")
+        print(f"Started character: {self.char['name']}")
         self.init_dialogue()
 
     def clear_char(self):
