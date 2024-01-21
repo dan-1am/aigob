@@ -333,87 +333,6 @@ def engine_query_stream(json_prompt):
 
 
 
-################ char
-
-assistant=dict(
-    name="Assistant",
-    description="",
-    example_dialogue="",
-    scenario="",
-    char_greeting="How can I help?",
-)
-
-
-def strip_char(char):
-    dupkeys = (
-        ("name", "char_name"),
-        ("description", "char_persona"),
-        ("scenario", "world_scenario"),
-        ("example_dialogue", "mes_example"),
-        ("char_greeting", "first_mes"),
-    )
-    for key1,key2 in dupkeys:
-        if char.get(key1, None) is None:
-            char[key1] = char[key2]
-        char.pop(key2, None)
-        char[key1] = char[key1].strip()
-
-
-def load_char(name, dir=None):
-    if dir == None:
-        dir = conf.chardir
-    names = (name, name+".pch", name+".json")
-    for testname in names:
-        path = Path(dir, testname)
-        if path.is_file():
-            with path.open() as f:
-                if testname.endswith(".pch"):
-                    char = eval(f.read(), {"__builtins__": {"dict": dict}})
-                else:
-                    char = json.load(f)
-                strip_char(char)
-                return char
-
-
-#!!! todo: fill alternative tags from pair
-def char_to_json(char, file, dir=None):
-    if dir == None:
-        dir = conf.chardir
-    if not file.endswith(".json"):
-        file += ".json"
-    with open(f"{dir}/{file}", "w") as f:
-        json.dump(char, f, indent=3)
-
-
-def char_to_pch(char, file, dir=None):
-    if dir == None:
-        dir = conf.chardir
-    longkeys = (
-        "description", "char_persona",
-        "scenario", "world_scenario",
-        "example_dialogue", "mes_example",
-        "char_greeting", "first_mes",
-    )
-    parts = ["dict(\n"]
-    for k,v in char.items():
-        if isinstance(v, str):
-            if v == "" or k not in longkeys:
-                parts.append(f'{k} = """{v}""",\n')
-            else:
-                parts.append(f'{k} = """\n\n{v}\n\n""",\n')
-        else:
-            parts.append(f'{k} = {v},\n')
-    parts.append(")\n")
-    text = "\n".join(parts)
-    if not file.endswith(".pch"):
-        file += ".pch"
-    with open(f"{dir}/{file}", "w") as f:
-        f.write(text)
-
-################
-
-
-
 ################ history
 
 cutoff_digits = 8
@@ -497,6 +416,110 @@ def chat_cmd_help():
 
 
 
+class Character:
+
+    dupkeys = (
+        ("name", "char_name"),
+        ("description", "char_persona"),
+        ("scenario", "world_scenario"),
+        ("example_dialogue", "mes_example"),
+        ("char_greeting", "first_mes"),
+    )
+
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+    def memory(self):
+        parts = []
+        for variable,template in (
+            ('system_prompt', "{}"),
+            ('description', "Persona:\n{}"),
+            ('scenario', "[Scenario: {}]"),
+            ('post_history_instructions', "{}"),
+            ('example_dialogue', "{}"),
+        ):
+            text = self.data.get(variable, "")
+            if len(text):
+                parts.append(template.format(text))
+        parts.append("***\n")
+        return "\n".join(parts)
+
+    def strip(self):
+        for key1,key2 in self.dupkeys:
+            if self.data.get(key1, None) is None:
+                self[key1] = self.data.get(key2, "")
+            self.data.pop(key2, None)
+            self[key1] = self[key1].strip()
+
+    @classmethod
+    def load(cls, name, dir=None):
+        if dir == None:
+            dir = conf.chardir
+        names = (name, name+".pch", name+".json")
+        for testname in names:
+            path = Path(dir, testname)
+            if path.is_file():
+                with path.open() as f:
+                    if testname.endswith(".pch"):
+                        data = eval(f.read(), {"__builtins__": {"dict": dict}})
+                    else:
+                        data = json.load(f)
+                    char = cls(data)
+                    char.strip()
+                    return char
+
+    def to_json(self, file, dir=None):
+        save = list(self.data)
+        for key1,key2 in self.dupkeys:
+            save[key2] = save[key1]
+        if dir == None:
+            dir = conf.chardir
+        if not file.endswith(".json"):
+            file += ".json"
+        with open(f"{dir}/{file}", "w") as f:
+            json.dump(save, f, indent=3)
+
+    def to_pch(self, file, dir=None):
+        if dir == None:
+            dir = conf.chardir
+        longkeys = (
+            "description",
+            "scenario",
+            "example_dialogue",
+            "char_greeting",
+        )
+        parts = ["dict(\n"]
+        for k,v in self.data.items():
+            if isinstance(v, str):
+                if v == "" or k not in longkeys:
+                    parts.append(f'{k} = """{v}""",\n')
+                else:
+                    parts.append(f'{k} = """\n\n{v}\n\n""",\n')
+            else:
+                parts.append(f'{k} = {v},\n')
+        parts.append(")\n")
+        text = "\n".join(parts)
+        if not file.endswith(".pch"):
+            file += ".pch"
+        with open(f"{dir}/{file}", "w") as f:
+            f.write(text)
+
+
+assistant=Character(dict(
+    name="Assistant",
+    description="",
+    example_dialogue="",
+    scenario="",
+    char_greeting="How can I help?",
+))
+
+
 class Conversation:
 
     def __init__(self, char=""):
@@ -528,21 +551,9 @@ class Conversation:
             char = assistant
         self.charname = char["name"]
         self.char = char
-        parts = []
-        for variable,template in (
-            ('system_prompt', "{}"),
-            ('description', "Persona:\n{}"),
-            ('scenario', "[Scenario: {}]"),
-            ('post_history_instructions', "{}"),
-            ('example_dialogue', "{}"),
-        ):
-            text = char.get(variable, "")
-            if len(text):
-                parts.append(template.format(text))
-        parts.append("***\n")
-        memory = "\n".join(parts)
-        self.memory = self.parse_vars(memory)
-        self.memory_tokens = count_tokens(memory)
+        self.memory = self.char.memory()
+        self.memory = self.parse_vars(self.memory)
+        self.memory_tokens = count_tokens(self.memory)
         self.log = f"{conf.logdir}/aiclient_{self.charname}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.charname}")
@@ -700,7 +711,7 @@ Ctrl-z  -exit
         """cmd charname  -load character."""
         name = params.strip()
         conf.set("lastchar", name)
-        char = load_char(name)
+        char = Character.load(name)
         self.set_char(char)
 
     @chat_cmd
@@ -855,19 +866,19 @@ def talk(char):
 conf.load()
 char = conf.lastchar
 if char != "":
-    char = load_char(char)
+    char = Character.load(char)
 
 args = sys.argv[1:]
 while args:
     arg = args.pop(0)
     if arg in ("-c", "--char"):
         conf.set("lastchar", args.pop(0))
-        char = load_char(conf.lastchar)
+        char = Character.load(conf.lastchar)
     elif arg in ("-j", "--json"):
-        char_to_json(char, args.pop(0))
+        char.to_json(args.pop(0))
         sys.exit()
     elif arg in ("-p", "--py"):
-        char_to_pch(char, args.pop(0))
+        char.to_pch(args.pop(0))
         sys.exit()
     else:
         raise NameError(f"Error: unknown option {arg}")
