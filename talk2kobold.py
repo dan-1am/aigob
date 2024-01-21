@@ -167,21 +167,11 @@ def reformat(text, width=None, keep_nl=True):
 
 engine_settings = {
 #    "stop_sequence": ["You:", "\nYou ", "\n\n"],
-    "use_story": False,
-    "use_memory": True,
     "use_default_badwordsids": False,
-    "use_authors_note": False,
-    "use_world_info": False,
-    "quiet": True,
-    "singleline": False,
-
     "genkey": "0I3IVC7D",
     "max_context_length": 4096,
     "max_length": 16,
-    "n": 1,
     #"sampler_seed": 69420,   #set the seed
-    #"sampler_full_determinism": False,     #set it so the seed determines generation content
-
 #    "temperature": 0.7,
     "temperature": 0.8,
     "mirostat": 2,
