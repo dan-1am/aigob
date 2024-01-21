@@ -667,7 +667,7 @@ class Conversation:
         print("\n"*3, text, end, sep="", end="")
 
     def help(self):
-        print("""Help:
+        head = """Help:
 Ctrl+c  -while receiving llm answer: cancel
 Ctrl-z  -exit
 "="  -add new line
@@ -675,7 +675,8 @@ Ctrl-z  -exit
 "text+"  -let llm to continue text
 "@"  -edit in external editor
 /set textmode chat/text - mode of conversation
-""", chat_cmd_help(), sep="", end="")
+"""
+        print(head, chat_cmd_help(), sep="", end="")
 
     @chat_cmd
     def cmd_help(self, params):
