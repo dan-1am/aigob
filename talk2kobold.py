@@ -499,17 +499,17 @@ def chat_cmd_help():
 
 class Conversation:
 
-    def __init__(self, bot=""):
+    def __init__(self, char=""):
         self.username = conf.username
         self.stop_reason = 0
-        self.set_bot(bot)
+        self.set_char(char)
 
     def parse_vars(self, text):
-        context = dict(user=self.username, char=self.botname)
+        context = dict(user=self.username, char=self.charname)
         return eval_template(text, context)
 
     def parse_vars_batch(self, parts):
-        context = dict(user=self.username, char=self.botname)
+        context = dict(user=self.username, char=self.charname)
         return [eval_template(text, context) for text in parts]
 
     def init_dialogue(self):
@@ -517,17 +517,17 @@ class Conversation:
         if self.prompt == "":
             print("History is empty, starting new conversation.\n")
             # first "\n" to avoid failing first context shift:
-            first = "\n"+self.parse_vars( self.bot['char_greeting'] )+"\n\n"
+            first = "\n"+self.parse_vars( self.char['char_greeting'] )+"\n\n"
             self.to_prompt(first)
         else:
             print(f"History loaded: {self.log}\n")
         self.refresh_screen(chars=8000)
 
-    def set_bot(self, bot=""):
-        if bot == "":
-            bot = assistant
-        self.botname = bot["name"]
-        self.bot = bot
+    def set_char(self, char=""):
+        if char == "":
+            char = assistant
+        self.charname = char["name"]
+        self.char = char
         parts = []
         for variable,template in (
             ('system_prompt', "{}"),
@@ -536,23 +536,23 @@ class Conversation:
             ('post_history_instructions', "{}"),
             ('example_dialogue', "{}"),
         ):
-            text = bot.get(variable, "")
+            text = char.get(variable, "")
             if len(text):
                 parts.append(template.format(text))
         parts.append("***\n")
         memory = "\n".join(parts)
         self.memory = self.parse_vars(memory)
         self.memory_tokens = count_tokens(memory)
-        self.log = f"{conf.logdir}/aiclient_{self.botname}.log"
+        self.log = f"{conf.logdir}/aiclient_{self.charname}.log"
         print("\n\n", "#"*32, sep="")
-        print(f"Started character: {self.botname}")
+        print(f"Started character: {self.charname}")
         self.init_dialogue()
 
-    def clear_bot(self):
+    def clear_char(self):
         self.prompt = ""
         self.cutoff = 0
         update_history(self.log, self.prompt, self.cutoff)
-        self.set_bot(self.bot)
+        self.set_char(self.char)
 
     # up to 300 tokens shifts were observed, we can assume no small limit there
     def shift_context(self, shift):
@@ -701,12 +701,12 @@ Ctrl-z  -exit
         name = params.strip()
         conf.set("lastchar", name)
         char = load_char(name)
-        self.set_bot(char)
+        self.set_char(char)
 
     @chat_cmd
     def cmd_clear(self, params):
         """cmd  -clear current character history."""
-        self.clear_bot()
+        self.clear_char()
 
     @chat_cmd
     def cmd_del(self, params):
@@ -823,8 +823,8 @@ Ctrl-z  -exit
             self.refresh_screen(end="")
 
 
-def talk(bot):
-    chat = Conversation(bot)
+def talk(char):
+    chat = Conversation(char)
     while True:
         if chat.prompt == "" or chat.prompt.endswith("\n"):
             mode = ""
