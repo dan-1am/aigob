@@ -553,7 +553,7 @@ class Conversation:
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
         self.memory_tokens = count_tokens(self.memory)
-        self.log = f"{conf.logdir}/aiclient_{self.char['name']}.log"
+        self.log = f"{conf.logdir}/{self.char['name']}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.char['name']}")
         self.init_dialogue()
