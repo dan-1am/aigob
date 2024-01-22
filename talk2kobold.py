@@ -22,6 +22,14 @@ def tolog(txt):
         f.write(txt)
 
 
+def warn(txt):
+    print("Warning! "+txt, file=sys.stderr)
+
+
+def error(txt):
+    print("Error! "+txt, file=sys.stderr)
+
+
 def random_string(length, charset=None):
     if charset == None:
         charset = string.ascii_uppercase+string.digits
