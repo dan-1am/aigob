@@ -718,6 +718,17 @@ Ctrl-z  -exit
         self.set_char(char)
 
     @chat_cmd
+    def cmd_save(self, params):
+        """cmd filename  -save character to json/pch file."""
+        name = params.strip()
+        if not name.endswith((".pch",".json")):
+            name += ".json"
+        if name.endswith(".json"):
+            self.char.to_json(name)
+        else:
+            self.char.to_pch(name)
+
+    @chat_cmd
     def cmd_clear(self, params):
         """cmd  -clear current character history."""
         self.clear_char()
