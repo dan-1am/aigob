@@ -227,6 +227,9 @@ class Settings:
 #    stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
     engine = engine_settings
 
+    def __init__(self):
+        self.generate_key()
+
     def set(self, var, value):
         setattr(self, var, value)
 #        self.save()
@@ -256,15 +259,17 @@ class Settings:
         with open(self._conffile, "w") as f:
             json.dump(opts, f, indent=4)
 
-    def load(self):
-        if Path(self._conffile).is_file():
-            with open(self._conffile, "r") as f:
-#                self.__dict__ = json.load(f)
+    def load(self, path=None):
+        if path is None:
+            path = self._conffile
+        else:
+            self._conffile = path
+        if Path(path).is_file():
+            with open(path, "r") as f:
                 loaded = json.load(f)
             self.update(loaded)
         else:
-            self.generate_key()
-            self.save()
+            warn(f"Configuration file not exist: {path}")
 
 
 conf = Settings()
