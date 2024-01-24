@@ -206,7 +206,7 @@ def deep_update(storage, data):
         old = storage.get(name, None)
         if old is None:
             raise KeyError(f"Wrong key {name} = {value} in options.")
-        if getattr(old, "keys", None):
+        if getattr(old, "items", None):
             deep_update(old, value)
         else:
             storage[name] = value
