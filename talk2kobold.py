@@ -36,67 +36,6 @@ def random_string(length, charset=None):
     return "".join(random.choices(charset, k=length))
 
 
-def print_nested(store):
-    if hasattr(store, "items"):
-        for k,v in store.items():
-            print(f"{k}={v}")
-    else:
-        empty = True
-        for name in dir(store):
-            if ( not name.startswith("_")
-                    and not callable(value := getattr(store, name)) ):
-                empty = False
-                print(f"{name}={value}")
-        if empty:
-            print(store)
-
-
-def get_nested(store, name):
-    """For name=name1.name2... get store.name1[name2]..."""
-    start,_,end = name.partition(".")
-    old = getattr(store, start, None)
-    if old is None:
-        # try store[start]
-        if hasattr(store, "__getitem__"):
-            old = store.get(start, None)
-            if old is None:
-                print("Var not exists.")
-            elif end == "":
-                return old
-            else:
-                return get_nested(old, end)
-        else:
-            print("Var not exists.")
-    # store.start
-    elif end == "":
-        return old
-    else:
-        return get_nested(old, end)
-
-
-def set_nested(store, name, value):
-    """For name=name1.name2... set store.name1[name2]... to value."""
-    start,_,end = name.partition(".")
-    old = getattr(store, start, None)
-    if old is None:
-        # try store[start]
-        if hasattr(store, "__getitem__"):
-            old = store.get(start, None)
-            if old is None:
-                print("Var not exists.")
-            elif end == "":
-                store[start] = value
-            else:
-                set_nested(old, end, value)
-        else:
-            print("Var not exists.")
-    # store.start
-    elif end == "":
-        setattr(store, start, value)
-    else:
-        set_nested(old, end, value)
-
-
 def eval_template(template, context):
     return re.sub(r'\{\{(.*?)\}\}',
         lambda m: str( eval(m[1], context) ), template)
@@ -213,57 +152,91 @@ def deep_update(storage, data):
 
 
 class Settings:
-    _conffile = "talk2kobold.conf"
-    save_on_exit = True
-    chardir = "chars"
-    logdir = "log"
-    endpoint = "http://127.0.0.1:5001"
-    username = "You"
-    textmode = "chat"
-    wrap_at = 72
-    gen_until_end = True
-    lastchar = ""
-    stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"]
-#    stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"]
-    engine = engine_settings
+    conffile = "talk2kobold.conf"
+
+    default = dict(
+        save_on_exit = True,
+        chardir = "chars",
+        logdir = "log",
+        endpoint = "http://127.0.0.1:5001",
+        username = "You",
+        textmode = "chat",
+        wrap_at = 72,
+        gen_until_end = True,
+        lastchar = "",
+        stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"],
+#        stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"],
+        engine = engine_settings,
+    )
 
     def __init__(self):
+        self.data = dict(self.default)
         self.generate_key()
 
+    def updated(self):
+        pass
+
     def set(self, var, value):
-        setattr(self, var, value)
-#        self.save()
+        self.data[var] = value
+        self.updated()
+
+    def __getattr__(self, var):
+        return self.data[var]
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+        self.updated()
 
     def update(self, new):
-        for name,value in new.items():
-            old = getattr(self, name, None)
-            if old is None:
-                raise KeyError(f"Wrong key {name} = {value} in options.")
-            if getattr(old, "keys", None):
-                deep_update(old, value)
-            else:
-                setattr(self, name, value)
+        deep_update(self.data, new)
 
     def generate_key(self):
-        self.engine["genkey"] = random_string(8)
+        self.data["engine"]["genkey"] = random_string(8)
+
+    def print(self, path=""):
+        branch = self.getpath(path)
+        if hasattr(branch, "__getitem__"):
+            for k,v in self.getpath(path).items():
+                print(f"{k}={v}")
+        else:
+            print(f"{path}={branch}")
+
+    def getpath(self, name):
+        """For name="name1.name2..." get data[name1][name2]..."""
+        store = self.data
+        try:
+            if len(name):
+                for part in name.split("."):
+                    store = store[part]
+            return store
+        except (KeyError,TypeError):
+            print(f"Variable {name} not exists.")
+
+    def setpath(self, name, value):
+        """For name="name1.name2..." set data[name1][name2]... to value"""
+        store = self.data
+        try:
+            *path,last = name.split(".")
+            if len(name):
+                for var in path:
+                    store = store[var]
+            store[last] = value
+            self.updated()
+        except (KeyError,TypeError):
+            print(f"Variable {name} not exists.")
 
     def save(self):
-        opts = {name: value
-            for name in dir(self)
-            if not name.startswith("_")
-            if not callable(value := getattr(self, name))
-        }
-        opts['engine'] = self.engine.copy()
-        for name in ("history", "prompt", "stop_sequence"):
-            opts['engine'].pop(name, None)
-        with open(self._conffile, "w") as f:
-            json.dump(opts, f, indent=4)
+        with open(self.conffile, "w") as f:
+            json.dump(self.data, f, indent=4)
 
     def load(self, path=None):
         if path is None:
-            path = self._conffile
+            path = self.conffile
         else:
-            self._conffile = path
+            self.conffile = path
         if Path(path).is_file():
             with open(path, "r") as f:
                 loaded = json.load(f)
@@ -766,16 +739,15 @@ Ctrl-z  -exit
         """cmd [name] [value] -display or set variable."""
         args = params.split()
         if len(params) == 0:
-            print_nested(conf)
+            conf.print()
         elif len(args) == 1:
-            name = args[0]
-            value = get_nested(conf, name)
-            print_nested(value)
+            var = args[0]
+            conf.print(var)
         elif len(args) == 2:
             var,value = args
             if value.isdigit():
                 value = int(value)
-            set_nested(conf, var, value)
+            conf.setpath(var, value)
         else:
             print("Error: set need at most 2 parameters.")
 
