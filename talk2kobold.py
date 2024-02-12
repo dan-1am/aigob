@@ -139,6 +139,37 @@ engine_settings = {
     "frmtrmblln": False,
 }
 
+conf_presets = dict(
+    strict = dict(
+        engine = {
+            "temperature": 0.7,
+            "mirostat": 0,
+        },
+    ),
+    creative = dict(
+        engine = {
+            "temperature": 0.8,
+            "mirostat": 2,
+            "mirostat_tau": 5.0,
+            "mirostat_eta": 0.1,
+        },
+    ),
+    norepeat = dict(
+        engine = {
+            "rep_pen": 1.15,
+            "rep_pen_range": 2000,
+            "rep_pen_slope": 0.0,
+        },
+    ),
+    stdrepeat = dict(
+        engine = {
+            "rep_pen": 1.1,
+            "rep_pen_range": 320,
+            "rep_pen_slope": 0.7,
+        },
+    ),
+)
+
 
 def deep_update(storage, data):
     for name,value in data.items():
@@ -149,6 +180,22 @@ def deep_update(storage, data):
             deep_update(old, value)
         else:
             storage[name] = value
+
+
+def deep_diff(storage, data, prefix="", changed=None):
+    if changed is None:
+        changed = []
+    for name,value in data.items():
+        loop_prefix = prefix+"."+name if prefix else name
+        if name not in storage:
+            changed.append(loop_prefix)
+        else:
+            old = storage[name]
+            if hasattr(old, "items"):
+                deep_diff(old, value, loop_prefix, changed)
+            elif old != value:
+                changed.append(loop_prefix)
+    return changed
 
 
 class Settings:
@@ -167,6 +214,8 @@ class Settings:
         stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"],
 #        stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"],
         engine = engine_settings,
+        presets = conf_presets,
+        active_presets = "strict,stdrepeat",
     )
 
     def __init__(self):
@@ -227,6 +276,31 @@ class Settings:
             self.updated()
         except (KeyError,TypeError):
             print(f"Variable {name} not exists.")
+
+    def use_presets(self, names):
+        presets = self.data["presets"]
+        used = []
+        for name in names.split(","):
+            if name in presets:
+                self.update(presets[name])
+                used.append(name)
+            else:
+                print(f"Preset [$name] not found.")
+        self.data["active_presets"] = ",".join(used)
+
+    def presets_status(self):
+        ans = []
+        presets = self.data["presets"]
+        for name in self.data["active_presets"].split(","):
+            if name in presets:
+                diff = deep_diff(self.data, presets[name])
+                if diff:
+                    ans.append("\n  *".join((name, *diff)))
+                else:
+                    ans.append(name)
+            else:
+                ans.append(name+" - missing preset")
+        return "\n".join(ans)
 
     def save(self):
         with open(self.conffile, "w") as f:
@@ -750,6 +824,16 @@ Ctrl-z  -exit
             conf.setpath(var, value)
         else:
             print("Error: set need at most 2 parameters.")
+
+    @chat_cmd
+    def cmd_preset(self, params):
+        """cmd name1,name2,... -use presets."""
+        if not params:
+            for name in conf.presets:
+                print(name)
+            print("\nActive:\n" + conf.presets_status())
+        else:
+            conf.use_presets(params)
 
     @chat_cmd
     def cmd_exit(self, params):
