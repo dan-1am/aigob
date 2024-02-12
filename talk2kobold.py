@@ -142,10 +142,10 @@ engine_settings = {
 
 def deep_update(storage, data):
     for name,value in data.items():
-        old = storage.get(name, None)
-        if old is None:
+        if name not in storage:
             raise KeyError(f"Wrong key {name} = {value} in options.")
-        if getattr(old, "items", None):
+        old = storage[name]
+        if hasattr(old, "items"):
             deep_update(old, value)
         else:
             storage[name] = value
