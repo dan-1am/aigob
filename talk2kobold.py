@@ -325,163 +325,7 @@ conf = Settings()
 
 
 
-################ llm api
-
-class Engine:
-
-    def stop(self):
-        requests.post(f"{conf.endpoint}/api/extra/abort")
-
-    def status(self):
-        """ Get status of KoboldCpp
-        Result: last_process, last_eval, last_token_count, total_gens, queue, idle,
-        stop_reason (INVALID=-1, OUT_OF_TOKENS=0, EOS_TOKEN=1, CUSTOM_STOPPER=2)
-        """
-        response = requests.get(f"{conf.endpoint}/api/extra/perf")
-        if response.status_code != 200:
-            raise IOError("Can not get status from engine")
-        return response.json()
-
-    def idle(self):
-        return self.status()['idle']
-
-    def stop_reason(self):
-        return self.status()['stop_reason']
-
-    def max_context(self):
-        response = requests.get(f"{conf.endpoint}/api/v1/config/max_context_length")
-        if response.status_code != 200:
-            return None
-        return response.json()['value']
-
-    def count_tokens(self, text):
-        response = requests.post(f"{conf.endpoint}/api/extra/tokencount",
-            json={"prompt": text})
-        if response.status_code != 200:
-            raise IOError("Can not get get token count from engine")
-        return response.json()['value']
-
-    def find_token_start(self, text, pos):
-        if pos == 0:
-            n = 0
-        else:
-            n = engine.count_tokens(text[:pos])
-        while n == engine.count_tokens(text[:pos+1]):
-            pos += 1
-        return pos
-
-    def get_stream(self, json_prompt):
-#    jprompt = self.get_json_prompt()
-        response = requests.post(f"{conf.endpoint}/api/extra/generate/stream",
-            json=json_prompt, stream=True)
-        if response.status_code != 200:
-            raise IOError("Can not get response stream from engine")
-        if response.encoding is None:
-            response.encoding = 'utf-8'
-        return response.iter_lines(chunk_size=20, decode_unicode=True)
-
-
-    def query_stream(self, json_prompt):
-        is_message = False
-        for line in self.get_stream(json_prompt):
-            if line:  #filter out keep-alive new lines
-                if is_message:
-                    if line.startswith("data:"):
-                        jresponse = json.loads(line.removeprefix("data: "))
-                        yield jresponse['token']
-                        is_message = False
-                else:
-                    if line == "event: message":
-                        is_message = True
-
-engine = Engine()
-
-################
-
-
-
-################ history
-
-cutoff_digits = 8
-
-def get_cutoff(text):
-    digits = text[:cutoff_digits]
-    if len(text) < cutoff_digits or not digits.isdecimal():
-        return text, None
-    cutoff = int(digits)
-    text = text[cutoff_digits:]
-    return text, cutoff
-
-
-def store_cutoff(file, cutoff):
-    file.seek(0)
-    file.write(f"{cutoff:0{cutoff_digits}}")
-
-
-def load_history(file_name):
-    if not Path(file_name).is_file():
-        open(file_name, "w").close()
-    with open(file_name, "r+", errors="replace") as file:
-        text, cutoff = get_cutoff(file.read())
-        if cutoff is None:
-            cutoff = 0
-            # add cutoff to history file
-            store_cutoff(file, cutoff)
-            file.write(text)
-    return text, cutoff
-
-
-def update_history(file_name, text, cutoff):
-    if not Path(file_name).is_file():
-        open(file_name, "w").close()
-    with open(file_name, "r+", errors="replace") as f:
-        history, old_cutoff = get_cutoff( f.read() )
-        if old_cutoff is None:
-            store_cutoff(f, 0)
-            f.write(text)
-            f.truncate()
-            return
-        if cutoff != old_cutoff:
-            store_cutoff(f, cutoff)
-        pos = find_diff(history, text)
-        if pos >= 0:
-            filepos = cutoff_digits + len( text[:pos].encode('utf-8') )
-            # todo: not working for os.linesep > 1
-            f.seek(filepos)
-            f.write(text[pos:])
-            f.truncate()
-
-################
-
-
-
-################ chat commands
-
-chat_commands = dict()
-
-
-def chat_cmd(f):
-    chat_commands[f.__name__[4:]] = f
-
-
-def chat_cmd_alias(name):
-    last = list( chat_commands.keys() )[-1]
-    chat_commands[name] = chat_commands[last]
-
-
-def chat_cmd_get(name):
-    return chat_commands.get(name, None)
-
-
-def chat_cmd_help():
-    parts = []
-    for name,f in chat_commands.items():
-        parts.append(f"/{name}{f.__doc__[3:]}\n")
-    return "".join(parts)
-
-################
-
-
+################ Characters
 
 class Character:
 
@@ -588,6 +432,167 @@ assistant=Character(dict(
     char_greeting="How can I help?",
 ))
 
+################
+
+
+
+################ chat commands
+
+chat_commands = dict()
+
+
+def chat_cmd(f):
+    chat_commands[f.__name__[4:]] = f
+
+
+def chat_cmd_alias(name):
+    last = list( chat_commands.keys() )[-1]
+    chat_commands[name] = chat_commands[last]
+
+
+def chat_cmd_get(name):
+    return chat_commands.get(name, None)
+
+
+def chat_cmd_help():
+    parts = []
+    for name,f in chat_commands.items():
+        parts.append(f"/{name}{f.__doc__[3:]}\n")
+    return "".join(parts)
+
+################
+
+
+
+################ history
+
+cutoff_digits = 8
+
+def get_cutoff(text):
+    digits = text[:cutoff_digits]
+    if len(text) < cutoff_digits or not digits.isdecimal():
+        return text, None
+    cutoff = int(digits)
+    text = text[cutoff_digits:]
+    return text, cutoff
+
+
+def store_cutoff(file, cutoff):
+    file.seek(0)
+    file.write(f"{cutoff:0{cutoff_digits}}")
+
+
+def load_history(file_name):
+    if not Path(file_name).is_file():
+        open(file_name, "w").close()
+    with open(file_name, "r+", errors="replace") as file:
+        text, cutoff = get_cutoff(file.read())
+        if cutoff is None:
+            cutoff = 0
+            # add cutoff to history file
+            store_cutoff(file, cutoff)
+            file.write(text)
+    return text, cutoff
+
+
+def update_history(file_name, text, cutoff):
+    if not Path(file_name).is_file():
+        open(file_name, "w").close()
+    with open(file_name, "r+", errors="replace") as f:
+        history, old_cutoff = get_cutoff( f.read() )
+        if old_cutoff is None:
+            store_cutoff(f, 0)
+            f.write(text)
+            f.truncate()
+            return
+        if cutoff != old_cutoff:
+            store_cutoff(f, cutoff)
+        pos = find_diff(history, text)
+        if pos >= 0:
+            filepos = cutoff_digits + len( text[:pos].encode('utf-8') )
+            # todo: not working for os.linesep > 1
+            f.seek(filepos)
+            f.write(text[pos:])
+            f.truncate()
+
+################
+
+
+
+################ llm api
+
+class Engine:
+
+    def stop(self):
+        requests.post(f"{conf.endpoint}/api/extra/abort")
+
+    def status(self):
+        """ Get status of KoboldCpp
+        Result: last_process, last_eval, last_token_count, total_gens, queue, idle,
+        stop_reason (INVALID=-1, OUT_OF_TOKENS=0, EOS_TOKEN=1, CUSTOM_STOPPER=2)
+        """
+        response = requests.get(f"{conf.endpoint}/api/extra/perf")
+        if response.status_code != 200:
+            raise IOError("Can not get status from engine")
+        return response.json()
+
+    def idle(self):
+        return self.status()['idle']
+
+    def stop_reason(self):
+        return self.status()['stop_reason']
+
+    def max_context(self):
+        response = requests.get(f"{conf.endpoint}/api/v1/config/max_context_length")
+        if response.status_code != 200:
+            return None
+        return response.json()['value']
+
+    def count_tokens(self, text):
+        response = requests.post(f"{conf.endpoint}/api/extra/tokencount",
+            json={"prompt": text})
+        if response.status_code != 200:
+            raise IOError("Can not get get token count from engine")
+        return response.json()['value']
+
+    def next_token(self, text, pos):
+        if pos == 0:
+            n = 0
+        else:
+            n = engine.count_tokens(text[:pos])
+        while n == engine.count_tokens(text[:pos+1]):
+            pos += 1
+        return pos
+
+    def get_stream(self, json_prompt):
+#    jprompt = self.get_json_prompt()
+        response = requests.post(f"{conf.endpoint}/api/extra/generate/stream",
+            json=json_prompt, stream=True)
+        if response.status_code != 200:
+            raise IOError("Can not get response stream from engine")
+        if response.encoding is None:
+            response.encoding = 'utf-8'
+        return response.iter_lines(chunk_size=20, decode_unicode=True)
+
+
+    def query_stream(self, json_prompt):
+        is_message = False
+        for line in self.get_stream(json_prompt):
+            if line:  #filter out keep-alive new lines
+                if is_message:
+                    if line.startswith("data:"):
+                        jresponse = json.loads(line.removeprefix("data: "))
+                        yield jresponse['token']
+                        is_message = False
+                else:
+                    if line == "event: message":
+                        is_message = True
+
+engine = Engine()
+
+################
+
+
 
 class Conversation:
 
@@ -642,7 +647,7 @@ class Conversation:
                 pos = pos2+len(end)-1  #!!!
                 break
         else:
-            pos = pos + engine.find_token_start(self.prompt[pos:], 0)
+            pos = pos + engine.next_token(self.prompt[pos:], 0)
         self.cutoff = pos
 
     def del_prompt_lines(self, count=1):
