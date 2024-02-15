@@ -30,6 +30,14 @@ def error(txt):
     print("Error! "+txt, file=sys.stderr)
 
 
+def safeinput(prompt):
+    start = time.time()
+    while True:
+        message = input(prompt)
+        if time.time()-start > 0.1:
+            return message
+
+
 def random_string(length, charset=None):
     if charset == None:
         charset = string.ascii_uppercase+string.digits
@@ -928,34 +936,28 @@ Ctrl-z  -exit
             self.post(message)
             self.refresh_screen(end="")
 
-
-def talk(char):
-    chat = Conversation(char)
-    while True:
-        if chat.prompt == "" or chat.prompt.endswith("\n"):
-            mode = ""
-            print("\r", " "*20, "\r", sep="", end="")
-        else:
-            mode = "+"
-            print()
-        try:
-            start = time.time()
-            while True:
+    def run(self):
+        while True:
+            if self.prompt == "" or self.prompt.endswith("\n"):
+                mode = ""
+                print("\r", " "*20, "\r", sep="", end="")
+            else:
+                mode = "+"
+                print()
+            try:
                 if conf.textmode == "chat":
-                    prefix = f"{chat.username} "
+                    prefix = f"{self.username} "
                 else:
                     prefix = ""
-                message = input(f"{prefix}{mode}> ")
-                if time.time()-start > 0.5:
-                    break
-            chat.add_message(message)
-        except KeyboardInterrupt:
-            input("\nEnter to continue, Ctrl+C second time to exit.")
-        except EOFError:
-            print("End of input, exiting...")
-            break
-        except SystemExit:
-            break
+                message = safeinput(f"{prefix}{mode}> ")
+                self.add_message(message)
+            except KeyboardInterrupt:
+                input("\nEnter to continue, Ctrl+C second time to exit.")
+            except EOFError:
+                print("End of input, exiting...")
+                break
+            except SystemExit:
+                break
 
 
 conf.load()
@@ -980,7 +982,8 @@ while args:
     else:
         raise NameError(f"Error: unknown option {arg}")
 
-talk(char)
+chat = Conversation(char)
+chat.run()
 
 if conf.save_on_exit:
     conf.save()
