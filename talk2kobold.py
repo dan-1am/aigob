@@ -601,7 +601,7 @@ class Engine:
 
 class Conversation:
 
-    def __init__(self, char="", engine=None):
+    def __init__(self, char, engine=None):
         if engine is None:
             engine = Engine()
         self.engine = engine
@@ -628,9 +628,7 @@ class Conversation:
             print(f"History loaded: {self.log}\n")
         self.refresh_screen(chars=8000)
 
-    def set_char(self, char=""):
-        if char == "":
-            char = assistant
+    def set_char(self, char):
         self.char = char
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
@@ -970,9 +968,7 @@ Ctrl-z  -exit
 ################ Main
 
 conf.load()
-char = conf.lastchar
-if char != "":
-    char = Character.load(char)
+char = Character.load(conf.lastchar)
 
 args = sys.argv[1:]
 while args:
