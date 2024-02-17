@@ -595,7 +595,8 @@ class Engine:
 
 class Conversation:
 
-    def __init__(self, char, engine=None):
+    def __init__(self, char, conf, engine=None):
+        self.conf = conf
         if engine is None:
             engine = Engine(conf)
         self.engine = engine
@@ -627,7 +628,7 @@ class Conversation:
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
         self.memory_tokens = self.engine.count_tokens(self.memory)
-        self.log = f"{conf.logdir}/{self.char['name']}.log"
+        self.log = f"{self.conf.logdir}/{self.char['name']}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.char['name']}")
         self.init_dialogue()
@@ -652,7 +653,7 @@ class Conversation:
 
     def del_prompt_lines(self, count=1):
         text = self.prompt[self.cutoff:]
-        text = reformat(text, conf.wrap_at)
+        text = reformat(text, self.conf.wrap_at)
         pos = len(text)
         while count > 0:
             count -= 1
@@ -664,9 +665,9 @@ class Conversation:
 
     def to_prompt(self, message):
         self.prompt += message
-        max_ctx = conf.engine["max_context_length"] - self.memory_tokens
+        max_ctx = self.conf.engine["max_context_length"] - self.memory_tokens
         now = self.engine.count_tokens(self.prompt[self.cutoff:])
-        extra = now-(max_ctx-10-conf.engine["max_length"])
+        extra = now-(max_ctx-10-self.conf.engine["max_length"])
         if extra > 0:
             self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
         elif message == "":
@@ -674,8 +675,8 @@ class Conversation:
         update_history(self.log, self.prompt, self.cutoff)
 
     def get_json_prompt(self):
-        self.stop_parsed = self.parse_vars_batch(conf.stop_sequence)
-        prompt_data = dict(conf.engine)
+        self.stop_parsed = self.parse_vars_batch(self.conf.stop_sequence)
+        prompt_data = dict(self.conf.engine)
         prompt_data.update(
             stop_sequence=self.stop_parsed,
             memory=self.memory,
@@ -717,7 +718,7 @@ class Conversation:
 #        response = response.rstrip()+"\n"
             self.to_readline(response)
             self.to_prompt(response)
-            if not( conf.gen_until_end and self.stop_reason == 0 ):
+            if not( self.conf.gen_until_end and self.stop_reason == 0 ):
                 break
 
     def post(self, message):
@@ -736,7 +737,7 @@ class Conversation:
 
     def refresh_screen(self, end="", chars=2000):
         text = self.prompt[-chars:]
-        text = reformat(text, conf.wrap_at)
+        text = reformat(text, self.conf.wrap_at)
         print("\n"*3, text, end, sep="", end="")
 
     def help(self):
@@ -772,12 +773,12 @@ Ctrl-z  -exit
     @chat_cmd
     def cmd_saveconf(self, params):
         """cmd -save configuration to file."""
-        conf.save()
+        self.conf.save()
 
     @chat_cmd
     def cmd_ls(self, params):
         """cmd  -list available characters."""
-        for f in Path(conf.chardir).iterdir():
+        for f in Path(self.conf.chardir).iterdir():
             if f.suffix in (".json", ".pch"):
                 print(f.name)
 
@@ -785,8 +786,8 @@ Ctrl-z  -exit
     def cmd_load(self, params):
         """cmd charname  -load character."""
         name = params.strip()
-        conf.set("lastchar", name)
-        char = Character.load(name, conf.chardir)
+        self.conf.set("lastchar", name)
+        char = Character.load(name, self.conf.chardir)
         self.set_char(char)
 
     @chat_cmd
@@ -796,9 +797,9 @@ Ctrl-z  -exit
         if not name.endswith((".pch",".json")):
             name += ".json"
         if name.endswith(".json"):
-            self.char.to_json(name, conf.chardir)
+            self.char.to_json(name, self.conf.chardir)
         else:
-            self.char.to_pch(name, conf.chardir)
+            self.char.to_pch(name, self.conf.chardir)
 
     @chat_cmd
     def cmd_clear(self, params):
@@ -825,15 +826,15 @@ Ctrl-z  -exit
         """cmd [name] [value] -display or set variable."""
         args = params.split()
         if len(params) == 0:
-            conf.print()
+            self.conf.print()
         elif len(args) == 1:
             var = args[0]
-            conf.print(var)
+            self.conf.print(var)
         elif len(args) == 2:
             var,value = args
             if value.isdigit():
                 value = int(value)
-            conf.setpath(var, value)
+            self.conf.setpath(var, value)
         else:
             print("Error: set need at most 2 parameters.")
 
@@ -841,11 +842,11 @@ Ctrl-z  -exit
     def cmd_preset(self, params):
         """cmd name1,name2,... -use presets."""
         if not params:
-            for name in conf.presets:
+            for name in self.conf.presets:
                 print(name)
-            print("\nActive:\n" + conf.presets_status())
+            print("\nActive:\n" + self.conf.presets_status())
         else:
-            conf.use_presets(params)
+            self.conf.use_presets(params)
 
     @chat_cmd
     def cmd_exit(self, params):
@@ -863,7 +864,7 @@ Ctrl-z  -exit
             print("Unknown command.")
 
     def use_editor(self):
-        text = reformat(self.prompt[self.cutoff:], conf.wrap_at)
+        text = reformat(self.prompt[self.cutoff:], self.conf.wrap_at)
         file_to_edit = "/tmp/t2k"+random_string(8)
         with open(file_to_edit, "w") as f:
             f.write(text)
@@ -883,9 +884,9 @@ Ctrl-z  -exit
                 self.to_prompt(add)
 
     def append_message(self, message):
-        text = reformat(self.prompt[self.cutoff:].rstrip(), conf.wrap_at)
+        text = reformat(self.prompt[self.cutoff:].rstrip(), self.conf.wrap_at)
         pos = text.rfind("\n")
-        message = wrap_text(text[pos+1:] + message[1:], conf.wrap_at)
+        message = wrap_text(text[pos+1:] + message[1:], self.conf.wrap_at)
         # unsaved prompt, update_history() needed later
         self.prompt = self.prompt[:pos+1]
         self.to_prompt(message)
@@ -899,9 +900,9 @@ Ctrl-z  -exit
             self.prompt = self.prompt[:2-newlines]
         elif newlines < 2:
             prefix = "\n"*(2-newlines)
-        if conf.textmode == "chat":
+        if self.conf.textmode == "chat":
             message = f"{self.username}: {message}"
-        message = prefix + wrap_text(message, conf.wrap_at)
+        message = prefix + wrap_text(message, self.conf.wrap_at)
         if message.endswith("+"):
             message = message[:-1]
         else:
@@ -943,7 +944,7 @@ Ctrl-z  -exit
                 mode = "+"
                 print()
             try:
-                if conf.textmode == "chat":
+                if self.conf.textmode == "chat":
                     prefix = f"{self.username} "
                 else:
                     prefix = ""
@@ -982,7 +983,7 @@ while args:
     else:
         raise NameError(f"Error: unknown option {arg}")
 
-chat = Conversation(char)
+chat = Conversation(char, conf)
 chat.run()
 
 if conf.save_on_exit:
