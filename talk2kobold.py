@@ -521,15 +521,18 @@ def update_history(file_name, text, cutoff):
 
 class Engine:
 
+    def __init__(self, conf):
+        self.conf = conf
+
     def stop(self):
-        requests.post(f"{conf.endpoint}/api/extra/abort")
+        requests.post(f"{self.conf.endpoint}/api/extra/abort")
 
     def status(self):
         """ Get status of KoboldCpp
         Result: last_process, last_eval, last_token_count, total_gens, queue, idle,
         stop_reason (INVALID=-1, OUT_OF_TOKENS=0, EOS_TOKEN=1, CUSTOM_STOPPER=2)
         """
-        response = requests.get(f"{conf.endpoint}/api/extra/perf")
+        response = requests.get(f"{self.conf.endpoint}/api/extra/perf")
         if response.status_code != 200:
             raise IOError("Can not get status from engine")
         return response.json()
@@ -541,13 +544,13 @@ class Engine:
         return self.status()['stop_reason']
 
     def max_context(self):
-        response = requests.get(f"{conf.endpoint}/api/v1/config/max_context_length")
+        response = requests.get(f"{self.conf.endpoint}/api/v1/config/max_context_length")
         if response.status_code != 200:
             return None
         return response.json()['value']
 
     def count_tokens(self, text):
-        response = requests.post(f"{conf.endpoint}/api/extra/tokencount",
+        response = requests.post(f"{self.conf.endpoint}/api/extra/tokencount",
             json={"prompt": text})
         if response.status_code != 200:
             raise IOError("Can not get get token count from engine")
@@ -564,7 +567,7 @@ class Engine:
 
     def get_stream(self, json_prompt):
 #    jprompt = self.get_json_prompt()
-        response = requests.post(f"{conf.endpoint}/api/extra/generate/stream",
+        response = requests.post(f"{self.conf.endpoint}/api/extra/generate/stream",
             json=json_prompt, stream=True)
         if response.status_code != 200:
             raise IOError("Can not get response stream from engine")
@@ -594,7 +597,7 @@ class Conversation:
 
     def __init__(self, char, engine=None):
         if engine is None:
-            engine = Engine()
+            engine = Engine(conf)
         self.engine = engine
         self.username = conf.username
         self.stop_reason = 0
