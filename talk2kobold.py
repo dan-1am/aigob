@@ -80,10 +80,8 @@ def split_to_paragraphs(text):
         text = text[cr_pos:]
 
 
-def wrap_text(text, width=None):
+def wrap_text(text, width):
     """Wrap text to lines not exceeding width. Keep text length."""
-    if width is None:
-        width = conf.wrap_at
     text = text.replace("\n", " ")
 #    text = re.sub("\s{2,}", " ", text)
     result = []
@@ -104,7 +102,7 @@ def wrap_text(text, width=None):
     return "\n".join(result)
 
 
-def reformat(text, width=None, keep_nl=True):
+def reformat(text, width, keep_nl=True):
     parts = split_to_paragraphs(text)
     newtext = "\n\n".join(wrap_text(para, width) for para in parts)
     # needed for \n before input() and for del_line
@@ -658,7 +656,7 @@ class Conversation:
 
     def del_prompt_lines(self, count=1):
         text = self.prompt[self.cutoff:]
-        text = reformat(text)
+        text = reformat(text, conf.wrap_at)
         pos = len(text)
         while count > 0:
             count -= 1
@@ -742,7 +740,7 @@ class Conversation:
 
     def refresh_screen(self, end="", chars=2000):
         text = self.prompt[-chars:]
-        text = reformat(text)
+        text = reformat(text, conf.wrap_at)
         print("\n"*3, text, end, sep="", end="")
 
     def help(self):
@@ -869,7 +867,7 @@ Ctrl-z  -exit
             print("Unknown command.")
 
     def use_editor(self):
-        text = reformat( self.prompt[self.cutoff:] )
+        text = reformat(self.prompt[self.cutoff:], conf.wrap_at)
         file_to_edit = "/tmp/t2k"+random_string(8)
         with open(file_to_edit, "w") as f:
             f.write(text)
@@ -889,9 +887,9 @@ Ctrl-z  -exit
                 self.to_prompt(add)
 
     def append_message(self, message):
-        text = reformat( self.prompt[self.cutoff:].rstrip() )
+        text = reformat(self.prompt[self.cutoff:].rstrip(), conf.wrap_at)
         pos = text.rfind("\n")
-        message = wrap_text( text[pos+1:] + message[1:] )
+        message = wrap_text(text[pos+1:] + message[1:], conf.wrap_at)
         # unsaved prompt, update_history() needed later
         self.prompt = self.prompt[:pos+1]
         self.to_prompt(message)
@@ -907,7 +905,7 @@ Ctrl-z  -exit
             prefix = "\n"*(2-newlines)
         if conf.textmode == "chat":
             message = f"{self.username}: {message}"
-        message = prefix + wrap_text(message)
+        message = prefix + wrap_text(message, conf.wrap_at)
         if message.endswith("+"):
             message = message[:-1]
         else:
