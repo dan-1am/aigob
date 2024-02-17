@@ -323,9 +323,6 @@ class Settings:
         else:
             warn(f"Configuration file not exist: {path}")
 
-
-conf = Settings()
-
 ################
 
 
@@ -374,11 +371,9 @@ class Character:
             self[key1] = self[key1].strip()
 
     @classmethod
-    def load(cls, name, dir=None):
+    def load(cls, name, dir=""):
         if name in ("", "assistant"):
             return assistant
-        if dir == None:
-            dir = conf.chardir
         names = (name, name+".pch", name+".json")
         for testname in names:
             path = Path(dir, testname)
@@ -392,20 +387,17 @@ class Character:
                     char.strip()
                     return char
 
-    def to_json(self, file, dir=None):
+    def to_json(self, file, dir=""):
         save = list(self.data)
         for key1,key2 in self.dupkeys:
             save[key2] = save[key1]
-        if dir == None:
-            dir = conf.chardir
-        if not file.endswith(".json"):
-            file += ".json"
-        with open(f"{dir}/{file}", "w") as f:
+        file = Path(dir, file)
+        if file.suffix.lower() != ".json":
+            file.with_suffix(file.suffix + ".json")
+        with open(file, "w") as f:
             json.dump(save, f, indent=3)
 
-    def to_pch(self, file, dir=None):
-        if dir == None:
-            dir = conf.chardir
+    def to_pch(self, file, dir=""):
         longkeys = (
             "description",
             "scenario",
@@ -423,9 +415,10 @@ class Character:
                 parts.append(f'{k} = {v},\n')
         parts.append(")\n")
         text = "\n".join(parts)
-        if not file.endswith(".pch"):
-            file += ".pch"
-        with open(f"{dir}/{file}", "w") as f:
+        file = Path(dir, file)
+        if file.suffix.lower() != ".pch":
+            file.with_suffix(file.suffix + ".pch")
+        with open(file, "w") as f:
             f.write(text)
 
 
@@ -790,7 +783,7 @@ Ctrl-z  -exit
         """cmd charname  -load character."""
         name = params.strip()
         conf.set("lastchar", name)
-        char = Character.load(name)
+        char = Character.load(name, conf.chardir)
         self.set_char(char)
 
     @chat_cmd
@@ -800,9 +793,9 @@ Ctrl-z  -exit
         if not name.endswith((".pch",".json")):
             name += ".json"
         if name.endswith(".json"):
-            self.char.to_json(name)
+            self.char.to_json(name, conf.chardir)
         else:
-            self.char.to_pch(name)
+            self.char.to_pch(name, conf.chardir)
 
     @chat_cmd
     def cmd_clear(self, params):
@@ -965,8 +958,9 @@ Ctrl-z  -exit
 
 ################ Main
 
+conf = Settings()
 conf.load()
-char = Character.load(conf.lastchar)
+char = Character.load(conf.lastchar, conf.chardir)
 
 args = sys.argv[1:]
 while args:
@@ -975,12 +969,12 @@ while args:
         conf.load(args.pop(0))
     elif arg in ("-l", "--load"):
         conf.set("lastchar", args.pop(0))
-        char = Character.load(conf.lastchar)
+        char = Character.load(conf.lastchar, conf.chardir)
     elif arg in ("-j", "--json"):
-        char.to_json(args.pop(0))
+        char.to_json(args.pop(0), conf.chardir)
         sys.exit()
     elif arg in ("-p", "--py"):
-        char.to_pch(args.pop(0))
+        char.to_pch(args.pop(0), conf.chardir)
         sys.exit()
     else:
         raise NameError(f"Error: unknown option {arg}")
