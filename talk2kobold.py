@@ -15,7 +15,6 @@ import requests
 
 
 
-################ Misc
 
 def tolog(txt):
     with open("aiclient_debug.log","a") as f:
@@ -890,7 +889,36 @@ Ctrl-z  -exit
             else:
                 self.to_prompt(add)
 
+    def append_message(self, message):
+        text = reformat( self.prompt[self.cutoff:].rstrip() )
+        pos = text.rfind("\n")
+        message = wrap_text( text[pos+1:] + message[1:] )
+        # unsaved prompt, update_history() needed later
+        self.prompt = self.prompt[:pos+1]
+        self.to_prompt(message)
+        self.refresh_screen()
+
     def add_message(self, message):
+        newlines = count_newlines(self.prompt)
+        prefix = ""
+        if newlines > 2:
+            # unsaved prompt, update_history() needed later
+            self.prompt = self.prompt[:2-newlines]
+        elif newlines < 2:
+            prefix = "\n"*(2-newlines)
+        if conf.textmode == "chat":
+            message = f"{self.username}: {message}"
+        message = prefix + wrap_text(message)
+        if message.endswith("+"):
+            message = message[:-1]
+        else:
+            message = f"{message}\n\n"
+        self.refresh_screen(end="")
+        print(message, end="", flush=True)
+        self.post(message)
+        self.refresh_screen(end="")
+
+    def user_message(self, message):
 #        unfinished = len(self.prompt) and self.prompt[-1:] != "\n"
         if message.startswith("/"):
             self.command_message(message)
@@ -909,32 +937,9 @@ Ctrl-z  -exit
             self.del_prompt_lines()
             self.refresh_screen()
         elif message[0] == "+":
-            text = reformat( self.prompt[self.cutoff:].rstrip() )
-            pos = text.rfind("\n")
-            message = wrap_text( text[pos+1:] + message[1:] )
-            # unsaved prompt, update_history() needed later
-            self.prompt = self.prompt[:pos+1]
-            self.to_prompt(message)
-            self.refresh_screen()
+            self.append_message(message)
         else:
-            newlines = count_newlines(self.prompt)
-            prefix = ""
-            if newlines > 2:
-                # unsaved prompt, update_history() needed later
-                self.prompt = self.prompt[:2-newlines]
-            elif newlines < 2:
-                prefix = "\n"*(2-newlines)
-            if conf.textmode == "chat":
-                message = f"{self.username}: {message}"
-            message = prefix + wrap_text(message)
-            if message.endswith("+"):
-                message = message[:-1]
-            else:
-                message = f"{message}\n\n"
-            self.refresh_screen(end="")
-            print(message, end="", flush=True)
-            self.post(message)
-            self.refresh_screen(end="")
+            self.add_message(message)
 
     def run(self):
         while True:
@@ -950,7 +955,7 @@ Ctrl-z  -exit
                 else:
                     prefix = ""
                 message = safeinput(f"{prefix}{mode}> ")
-                self.add_message(message)
+                self.user_message(message)
             except KeyboardInterrupt:
                 input("\nEnter to continue, Ctrl+C second time to exit.")
             except EOFError:
@@ -959,6 +964,9 @@ Ctrl-z  -exit
             except SystemExit:
                 break
 
+
+
+################ Main
 
 conf.load()
 char = conf.lastchar
