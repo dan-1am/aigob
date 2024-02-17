@@ -595,15 +595,16 @@ class Engine:
                     if line == "event: message":
                         is_message = True
 
-engine = Engine()
-
 ################
 
 
 
 class Conversation:
 
-    def __init__(self, char=""):
+    def __init__(self, char="", engine=None):
+        if engine is None:
+            engine = Engine()
+        self.engine = engine
         self.username = conf.username
         self.stop_reason = 0
         self.set_char(char)
@@ -633,7 +634,7 @@ class Conversation:
         self.char = char
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
-        self.memory_tokens = engine.count_tokens(self.memory)
+        self.memory_tokens = self.engine.count_tokens(self.memory)
         self.log = f"{conf.logdir}/{self.char['name']}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.char['name']}")
@@ -654,7 +655,7 @@ class Conversation:
                 pos = pos2+len(end)-1  #!!!
                 break
         else:
-            pos = pos + engine.next_token(self.prompt[pos:], 0)
+            pos = pos + self.engine.next_token(self.prompt[pos:], 0)
         self.cutoff = pos
 
     def del_prompt_lines(self, count=1):
@@ -672,7 +673,7 @@ class Conversation:
     def to_prompt(self, message):
         self.prompt += message
         max_ctx = conf.engine["max_context_length"] - self.memory_tokens
-        now = engine.count_tokens(self.prompt[self.cutoff:])
+        now = self.engine.count_tokens(self.prompt[self.cutoff:])
         extra = now-(max_ctx-10-conf.engine["max_length"])
         if extra > 0:
             self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
@@ -692,10 +693,10 @@ class Conversation:
 
     def read_stream(self):
         response = ""
-        for token in engine.query_stream( self.get_json_prompt() ):
+        for token in self.engine.query_stream( self.get_json_prompt() ):
             response += token
             print(token, end="", flush=True)
-        self.stop_reason = engine.stop_reason()
+        self.stop_reason = self.engine.stop_reason()
         return response
 
     def to_readline(self, response):
@@ -730,16 +731,16 @@ class Conversation:
     def post(self, message):
         try:
             #todo: maybe an option for this? May interrupt multi-user engine.
-            if not engine.idle():
-                engine.stop()
+            if not self.engine.idle():
+                self.engine.stop()
             self.stream_response(message)
         except IOError:
             print("Error: can not send message.")
         except KeyboardInterrupt:
             print()
             #todo: maybe an option for this? May interrupt multi-user engine.
-            if not engine.idle():
-                engine.stop()
+            if not self.engine.idle():
+                self.engine.stop()
 
     def refresh_screen(self, end="", chars=2000):
         text = self.prompt[-chars:]
@@ -769,7 +770,7 @@ Ctrl-z  -exit
     @chat_cmd
     def cmd_stop(self, params):
         """cmd  -command llm to stop generation."""
-        engine.stop()
+        self.engine.stop()
 
     @chat_cmd
     def cmd_test(self, params):
