@@ -481,9 +481,11 @@ def store_cutoff(file, cutoff):
 
 
 def load_history(file_name):
-    if not Path(file_name).is_file():
-        open(file_name, "w").close()
-    with open(file_name, "r+", errors="replace") as file:
+    path = Path(file_name).expanduser()
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        open(path, "w").close()
+    with open(path, "r+", errors="replace") as file:
         text, cutoff = get_cutoff(file.read())
         if cutoff is None:
             cutoff = 0
@@ -494,9 +496,11 @@ def load_history(file_name):
 
 
 def update_history(file_name, text, cutoff):
-    if not Path(file_name).is_file():
-        open(file_name, "w").close()
-    with open(file_name, "r+", errors="replace") as f:
+    path = Path(file_name).expanduser()
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        open(path, "w").close()
+    with open(path, "r+", errors="replace") as f:
         history, old_cutoff = get_cutoff( f.read() )
         if old_cutoff is None:
             store_cutoff(f, 0)
