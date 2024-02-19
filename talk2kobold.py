@@ -672,12 +672,11 @@ class Conversation:
         if engine is None:
             engine = Engine(conf)
         self.engine = engine
-        self.username = conf.username
         self.stop_reason = 0
         self.set_char(char)
 
     def parse_vars(self, text):
-        context = dict(user=self.username, char=self.char['name'])
+        context = dict(user=self.conf.username, char=self.char['name'])
         return eval_template(text, context)
 
     def init_dialogue(self):
@@ -951,7 +950,7 @@ Ctrl-z  -exit
         elif newlines < 2:
             prefix = "\n"*(2-newlines)
         if self.conf.textmode == "chat":
-            message = f"{self.username}: {message}"
+            message = f"{self.conf.username}: {message}"
         message = prefix + wrap_text(message, self.conf.wrap_at)
         if message.endswith("+"):
             message = message[:-1]
@@ -995,7 +994,7 @@ Ctrl-z  -exit
                 print()
             try:
                 if self.conf.textmode == "chat":
-                    prefix = f"{self.username} "
+                    prefix = f"{self.conf.username} "
                 else:
                     prefix = ""
                 message = safeinput(f"{prefix}{mode}> ")
