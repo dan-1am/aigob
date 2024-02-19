@@ -618,7 +618,7 @@ class Engine:
         data.cutoff = self.cutoff
         request = dict(self.conf.engine)
         request.update(
-            stop_sequence=data.stop_parsed,
+            stop_sequence=data.stop_sequence,
             memory=data.memory,
             prompt=data.prompt[self.cutoff:],
         )
@@ -708,7 +708,7 @@ class Conversation:
 
     def read_stream(self):
         response = ""
-        self.stop_parsed = self.parse_vars_batch(self.conf.stop_sequence)
+        self.stop_sequence = self.parse_vars_batch(self.conf.stop_sequence)
         #todo: try-except to keep accumulated response on ctrl+c / errors.
         for token in self.engine.run(self):
             response += token
@@ -733,7 +733,7 @@ class Conversation:
         while True:
             response = self.read_stream()
             if self.stop_reason == 2:  # custom stopper == stop word
-                for suffix in self.stop_parsed:
+                for suffix in self.stop_sequence:
                     if response.endswith(suffix):
                         response = response.removesuffix(suffix)
                         if suffix.startswith("\n") or suffix.endswith("\n"):
