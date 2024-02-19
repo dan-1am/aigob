@@ -565,10 +565,9 @@ class Engine:
             pos += 1
         return pos
 
-    def get_stream(self, json_prompt):
-#    jprompt = self.get_json_prompt()
+    def get_stream(self, request):
         response = requests.post(f"{self.conf.endpoint}/api/extra/generate/stream",
-            json=json_prompt, stream=True)
+            json=request, stream=True)
         if response.status_code != 200:
             raise IOError("Can not get response stream from engine")
         if response.encoding is None:
@@ -576,10 +575,58 @@ class Engine:
         return response.iter_lines(chunk_size=20, decode_unicode=True)
 
 
-    def query_stream(self, json_prompt):
+    def set_memory(self, memory):
+        if getattr(self, "last_memory", None) != memory:
+            self.last_mempory = memory
+            self.memory_tokens = self.count_tokens(memory)
+
+    def safe_cut(self, pos):
+        for end in ('\n\n', '.\n', '"\n', '\n', ' '):
+            pos2 = self.prompt.find(end, pos, pos+200)
+            if pos2 >= 0:
+                # keep single space-like token, it prevents
+                # triggering context-shifting bug in koboldcpp
+                pos = pos2+len(end)-1
+                break
+        else:
+            pos = pos + self.engine.next_token(self.prompt[pos:], 0)
+        return pos
+
+    # for reference, up to 300 tokens shifts were observed in koboldcpp
+    def shift_context(self):
+        max_ctx = (self.conf.engine["max_context_length"]
+            - self.conf.engine["max_length"] - self.memory_tokens - 10)
+        pos = self.cutoff
+        while True:
+            text = self.prompt[pos:]
+            tokens = self.count_tokens(text)
+            extra_tokens = tokens-max_ctx
+            if extra_tokens <= 0:
+                break
+            pos += extra_tokens*len(text)//tokens
+        if pos <= self.cutoff:
+            return
+        self.cutoff = self.safe_cut(pos)
+
+    def prepare(self, data):
+        self.prompt = data.prompt
+        self.set_memory(getattr(data, "memory", ""))
+        self.cutoff = getattr(data, "cutoff", 0)
+        self.shift_context()
+        data.cutoff = self.cutoff
+        request = dict(self.conf.engine)
+        request.update(
+            stop_sequence=data.stop_parsed,
+            memory=data.memory,
+            prompt=data.prompt[self.cutoff:],
+        )
+        return request
+
+    def run(self, data):
+        request = self.prepare(data)
         is_message = False
-        for line in self.get_stream(json_prompt):
-            if line:  #filter out keep-alive new lines
+        for line in self.get_stream(request):
+            if line:    # filter out keep-alive new lines
                 if is_message:
                     if line.startswith("data:"):
                         jresponse = json.loads(line.removeprefix("data: "))
@@ -627,7 +674,6 @@ class Conversation:
         self.char = char
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
-        self.memory_tokens = self.engine.count_tokens(self.memory)
         self.log = f"{self.conf.logdir}/{self.char['name']}.log"
         print("\n\n", "#"*32, sep="")
         print(f"Started character: {self.char['name']}")
@@ -638,18 +684,6 @@ class Conversation:
         self.cutoff = 0
         update_history(self.log, self.prompt, self.cutoff)
         self.set_char(self.char)
-
-    # up to 300 tokens shifts were observed, we can assume no small limit there
-    def shift_context(self, shift):
-        pos = self.cutoff+shift*5+10
-        for end in ('\n\n', '.\n', '"\n', '\n', ' '):
-            pos2 = self.prompt.find(end, pos, pos+200)
-            if pos2 >= 0:
-                pos = pos2+len(end)-1  #!!!
-                break
-        else:
-            pos = pos + self.engine.next_token(self.prompt[pos:], 0)
-        self.cutoff = pos
 
     def del_prompt_lines(self, count=1):
         text = self.prompt[self.cutoff:]
@@ -664,32 +698,20 @@ class Conversation:
         update_history(self.log, self.prompt, self.cutoff)
 
     def to_prompt(self, message):
-        self.prompt += message
-        max_ctx = self.conf.engine["max_context_length"] - self.memory_tokens
-        now = self.engine.count_tokens(self.prompt[self.cutoff:])
-        extra = now-(max_ctx-10-self.conf.engine["max_length"])
-        if extra > 0:
-            self.shift_context(max(extra, len(message)//5+1)) #!!! testing max()
-        elif message == "":
+        if not message:
             return
+        self.prompt += message
         update_history(self.log, self.prompt, self.cutoff)
-
-    def get_json_prompt(self):
-        self.stop_parsed = self.parse_vars_batch(self.conf.stop_sequence)
-        prompt_data = dict(self.conf.engine)
-        prompt_data.update(
-            stop_sequence=self.stop_parsed,
-            memory=self.memory,
-            prompt=self.prompt[self.cutoff:],
-        )
-        return prompt_data
 
     def read_stream(self):
         response = ""
-        for token in self.engine.query_stream( self.get_json_prompt() ):
+        self.stop_parsed = self.parse_vars_batch(self.conf.stop_sequence)
+        #todo: try-except to keep accumulated response on ctrl+c / errors.
+        for token in self.engine.run(self):
             response += token
             print(token, end="", flush=True)
         self.stop_reason = self.engine.stop_reason()
+        self.cutoff = self.engine.cutoff
         return response
 
     def to_readline(self, response):
