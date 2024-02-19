@@ -216,8 +216,7 @@ class Settings:
         wrap_at = 72,
         gen_until_end = True,
         lastchar = "",
-        stop_sequence = ["{{user}}:", "\n{{user}} ", "<START>"],
-#        stop_sequence = ["\n{{user}}:", "\n{{user}} ", "\n{{char}}"],
+        stop_sequence = "{{user}}:||\n{{user}} ",
         engine = engine_settings,
         presets = conf_presets,
         active_presets = "strict,stdrepeat",
@@ -665,10 +664,6 @@ class Conversation:
         context = dict(user=self.username, char=self.char['name'])
         return eval_template(text, context)
 
-    def parse_vars_batch(self, parts):
-        context = dict(user=self.username, char=self.char['name'])
-        return [eval_template(text, context) for text in parts]
-
     def init_dialogue(self):
         self.prompt, self.cutoff = load_history(self.log)
         if self.prompt == "":
@@ -695,6 +690,13 @@ class Conversation:
         update_history(self.log, self.prompt, self.cutoff)
         self.set_char(self.char)
 
+    def get_stop_sequence(self):
+        if self.conf.stop_sequence:
+            stop_parsed = self.parse_vars(self.conf.stop_sequence)
+            return stop_parsed.split("||")
+        else:
+            return []
+
     def del_prompt_lines(self, count=1):
         text = self.prompt[self.cutoff:]
         text = reformat(text, self.conf.wrap_at)
@@ -715,7 +717,7 @@ class Conversation:
 
     def read_stream(self):
         response = ""
-        self.stop_sequence = self.parse_vars_batch(self.conf.stop_sequence)
+        self.stop_sequence = self.get_stop_sequence()
         #todo: try-except to keep accumulated response on ctrl+c / errors.
         for token in self.engine.run(self):
             response += token
