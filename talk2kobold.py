@@ -543,7 +543,7 @@ class Engine:
     def stop_reason(self):
         return self.status()['stop_reason']
 
-    def max_context(self):
+    def get_max_context(self):
         response = requests.get(f"{self.conf.endpoint}/api/v1/config/max_context_length")
         if response.status_code != 200:
             return None
@@ -596,7 +596,7 @@ class Engine:
 
     # for reference, up to 300 tokens shifts were observed in koboldcpp
     def shift_context(self):
-        max_ctx = (self.conf.engine["max_context_length"]
+        max_ctx = (self.max_context
             - self.conf.engine["max_length"] - self.memory_tokens - 10)
         pos = self.cutoff
         while True:
@@ -611,6 +611,9 @@ class Engine:
         self.cutoff = self.safe_cut(pos)
 
     def prepare(self, data):
+        self.max_context = min(
+            self.conf.engine["max_context_length"],
+            self.get_max_context())
         self.prompt = data.prompt
         self.set_memory(getattr(data, "memory", ""))
         self.cutoff = getattr(data, "cutoff", 0)
