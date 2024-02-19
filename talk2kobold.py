@@ -173,6 +173,22 @@ conf_presets = dict(
             "rep_pen_slope": 0.7,
         },
     ),
+    story = dict(
+        textmode = "story",
+        gen_until_end = True,
+        stop_sequence = "",
+        engine = {
+            "max_length": 8,
+        },
+    ),
+    chat = dict(
+        textmode = "chat",
+        gen_until_end = False,
+        stop_sequence = "\n{{user}}:||\n{{user}}",
+        engine = {
+            "max_length": 32,
+        },
+    ),
 )
 
 
@@ -782,7 +798,7 @@ Ctrl-z  -exit
 "+text"  -append text to last line
 "text+"  -let llm to continue text
 "@"  -edit in external editor
-/set textmode chat/text - mode of conversation
+/set textmode chat/story - mode of conversation
 /load  -load Assistant character
 """
         print(head, chat_cmd_help(), sep="", end="")
