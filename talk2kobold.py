@@ -565,8 +565,10 @@ class Engine:
             pos += 1
         return pos
 
-    def get_stream(self, request):
-        response = requests.post(f"{self.conf.endpoint}/api/extra/generate/stream",
+    def get_stream(self, request, session=None):
+        if session is None:
+            session = requests
+        response = session.post(f"{self.conf.endpoint}/api/extra/generate/stream",
             json=request, stream=True)
         if response.status_code != 200:
             raise IOError("Can not get response stream from engine")
@@ -625,16 +627,17 @@ class Engine:
     def run(self, data):
         request = self.prepare(data)
         is_message = False
-        for line in self.get_stream(request):
-            if line:    # filter out keep-alive new lines
-                if is_message:
-                    if line.startswith("data:"):
-                        jresponse = json.loads(line.removeprefix("data: "))
-                        yield jresponse['token']
-                        is_message = False
-                else:
-                    if line == "event: message":
-                        is_message = True
+        with requests.Session() as session:
+            for line in self.get_stream(request, session):
+                if line:    # filter out keep-alive new lines
+                    if is_message:
+                        if line.startswith("data:"):
+                            jresponse = json.loads(line.removeprefix("data: "))
+                            yield jresponse['token']
+                            is_message = False
+                    else:
+                        if line == "event: message":
+                            is_message = True
 
 ################
 
