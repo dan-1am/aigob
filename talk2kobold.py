@@ -665,13 +665,88 @@ class Engine:
 
 
 
+################ ChatView
+
+class RawChatView:
+
+    def __init__(self, conf, chat):
+        self.conf = conf
+        self.chat = chat
+
+    def refresh_screen(self, end="", chars=2000):
+        text = self.chat.prompt[-chars:]
+        print("\n"*3, text, end, sep="", end="")
+
+    def input_prompt(self):
+        if self.conf.textmode == "chat":
+            name = f"{self.conf.username} "
+        else:
+            name = ""
+        if self.chat.message_finished():
+            append = ""
+        else:
+            append = "+"
+        return f"{name}{append}> "
+
+    def input(self):
+        print()
+        while True:
+            try:
+                message = safeinput(self.input_prompt())
+                break
+            except KeyboardInterrupt:
+                input("\nEnter to continue, Ctrl+C second time to exit.")
+        return message
+
+    def add_message(self, message, prefix=""):
+        pass
+
+    def update_message(self):
+        pass
+
+
+class RefreshChatView(RawChatView):
+
+    def refresh_screen(self, end="", chars=2000):
+        text = self.chat.prompt[-chars:]
+        text = reformat(text, self.conf.wrap_at)
+        print("\n"*3, text, end, sep="", end="")
+
+    def input(self):
+        if self.chat.message_finished():
+            print("\r", " "*20, "\r", sep="", end="")
+        else:
+            print()
+#        try:
+        message = safeinput(self.input_prompt())
+        return message
+
+    def add_message(self, message, prefix=""):
+        self.refresh_screen(end="")
+        print(prefix, message, sep="", end="", flush=True)
+
+    def update_message(self):
+        self.refresh_screen()
+
+
+class FormatChatView(RawChatView):
+    pass
+
+
+################
+
+
+
 class Conversation:
 
-    def __init__(self, char, conf, engine=None):
+    def __init__(self, char, conf, engine=None, view=None):
         self.conf = conf
         if engine is None:
             engine = Engine(conf)
         self.engine = engine
+        if view is None:
+            view = RawChatView(conf, self)
+        self.view = view
         self.stop_reason = 0
         self.set_char(char)
 
@@ -688,7 +763,7 @@ class Conversation:
             self.to_prompt(first)
         else:
             print(f"History loaded: {self.log}\n")
-        self.refresh_screen(chars=8000)
+        self.view.refresh_screen(chars=8000)
 
     def set_char(self, char):
         self.char = char
@@ -784,10 +859,33 @@ class Conversation:
             if not self.engine.idle():
                 self.engine.stop()
 
-    def refresh_screen(self, end="", chars=2000):
-        text = self.prompt[-chars:]
-        text = reformat(text, self.conf.wrap_at)
-        print("\n"*3, text, end, sep="", end="")
+    def add_message(self, message):
+        newlines = count_newlines(self.prompt)
+        prefix = ""
+        if newlines > 2:
+            # unsaved prompt, update_history() needed later
+            self.prompt = self.prompt[:2-newlines]
+        elif newlines < 2:
+            prefix = "\n"*(2-newlines)
+        if self.conf.textmode == "chat":
+            message = f"{self.conf.username}: {message}"
+        message = wrap_text(message, self.conf.wrap_at)
+        if message.endswith("+"):
+            message = message[:-1]
+        else:
+            message = f"{message}\n\n"
+        self.view.add_message(message, prefix=prefix)
+        self.post(message)
+        self.view.refresh_screen(end="")
+
+    def append_message(self, message):
+        text = reformat(self.prompt[self.cutoff:].rstrip(), self.conf.wrap_at)
+        pos = text.rfind("\n")
+        message = wrap_text(text[pos+1:] + message, self.conf.wrap_at)
+        # unsaved prompt, update_history() needed later
+        self.prompt = self.prompt[:pos+1]
+        self.to_prompt(message)
+        self.view.update_message()
 
     def help(self):
         head = """Help:
@@ -861,14 +959,14 @@ Ctrl-z  -exit
         count = params.strip()
         count = int(count) if count.isdigit() else 1
         self.del_prompt_lines(count)
-        self.refresh_screen()
+        self.view.refresh_screen()
 
     chat_cmd_alias("d")
 
     @chat_cmd
     def cmd_r(self, params):
         """cmd  -refresh screen."""
-        self.refresh_screen(chars=4000)
+        self.view.refresh_screen(chars=4000)
 
     @chat_cmd
     def cmd_set(self, params):
@@ -932,75 +1030,37 @@ Ctrl-z  -exit
             else:
                 self.to_prompt(add)
 
-    def append_message(self, message):
-        text = reformat(self.prompt[self.cutoff:].rstrip(), self.conf.wrap_at)
-        pos = text.rfind("\n")
-        message = wrap_text(text[pos+1:] + message[1:], self.conf.wrap_at)
-        # unsaved prompt, update_history() needed later
-        self.prompt = self.prompt[:pos+1]
-        self.to_prompt(message)
-        self.refresh_screen()
-
-    def add_message(self, message):
-        newlines = count_newlines(self.prompt)
-        prefix = ""
-        if newlines > 2:
-            # unsaved prompt, update_history() needed later
-            self.prompt = self.prompt[:2-newlines]
-        elif newlines < 2:
-            prefix = "\n"*(2-newlines)
-        if self.conf.textmode == "chat":
-            message = f"{self.conf.username}: {message}"
-        message = prefix + wrap_text(message, self.conf.wrap_at)
-        if message.endswith("+"):
-            message = message[:-1]
-        else:
-            message = f"{message}\n\n"
-        self.refresh_screen(end="")
-        print(message, end="", flush=True)
-        self.post(message)
-        self.refresh_screen(end="")
-
-    def user_message(self, message):
+    def user_input(self, message):
 #        unfinished = len(self.prompt) and self.prompt[-1:] != "\n"
         if message.startswith("/"):
             self.command_message(message)
         elif message == "@":
             self.use_editor()
             update_history(self.log, self.prompt, self.cutoff)
-            self.refresh_screen(end="")
+            self.view.refresh_screen(end="")
         elif message == "":
-            self.refresh_screen(end="")
+            self.view.refresh_screen(end="")
             self.post("")
-            self.refresh_screen(end="")
+            self.view.refresh_screen(end="")
         elif message == "=":
             self.to_prompt("\n")
-            self.refresh_screen()
+            self.view.refresh_screen()
         elif message == "-":
             self.del_prompt_lines()
-            self.refresh_screen()
+            self.view.refresh_screen()
         elif message[0] == "+":
-            self.append_message(message)
+            self.append_message(message[1:])
         else:
             self.add_message(message)
 
+    def message_finished(self):
+        return self.prompt == "" or self.prompt.endswith("\n")
+
     def run(self):
         while True:
-            if self.prompt == "" or self.prompt.endswith("\n"):
-                mode = ""
-                print("\r", " "*20, "\r", sep="", end="")
-            else:
-                mode = "+"
-                print()
             try:
-                if self.conf.textmode == "chat":
-                    prefix = f"{self.conf.username} "
-                else:
-                    prefix = ""
-                message = safeinput(f"{prefix}{mode}> ")
-                self.user_message(message)
-            except KeyboardInterrupt:
-                input("\nEnter to continue, Ctrl+C second time to exit.")
+                input = self.view.input()
+                self.user_input(input)
             except EOFError:
                 print("End of input, exiting...")
                 break
