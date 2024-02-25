@@ -371,6 +371,7 @@ class Character:
             ('scenario', "[Scenario: {}]"),
             ('post_history_instructions', "{}"),
             ('example_dialogue', "{}"),
+            ('patches', "{}"),
         ):
             text = self.data.get(variable, "")
             if len(text):
