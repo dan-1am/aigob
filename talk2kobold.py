@@ -564,7 +564,7 @@ class Engine:
         return self.status()['stop_reason']
 
     def get_max_context(self):
-        response = requests.get(f"{self.conf.endpoint}/api/v1/config/max_context_length")
+        response = requests.get(f"{self.conf.endpoint}/api/extra/true_max_context_length")
         if response.status_code != 200:
             return None
         return response.json()['value']
