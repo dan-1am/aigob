@@ -265,13 +265,15 @@ class Settings:
     def generate_key(self):
         self.data["engine"]["genkey"] = random_string(8)
 
-    def print(self, path=""):
+    def dump(self, path=""):
         branch = self.getpath(path)
+        lines = []
         if hasattr(branch, "__getitem__"):
             for k,v in self.getpath(path).items():
-                print(f"{k}={v}")
+                lines.append(f"{k}={v}")
         else:
-            print(f"{path}={branch}")
+            lines.append(f"{path}={branch}")
+        return "\n".join(lines)
 
     def getpath(self, name):
         """For name="name1.name2..." get data[name1][name2]..."""
@@ -699,7 +701,19 @@ class RawChatView:
                 input("\nEnter to continue, Ctrl+C second time to exit.")
         return message
 
-    def add_message(self, message, prefix=""):
+    def info(self, message):
+        print(f"\n{'-'*32}\n{message}")
+
+    def error(self, message):
+        print(f"\nError: {message}")
+
+    def ai_message_part(self, token):
+        print(token, end="", flush=True)
+
+    def ai_message(self, message):
+        self.refresh_screen(end="")
+
+    def user_message(self, message, prefix=""):
         pass
 
     def update_message(self):
@@ -722,7 +736,7 @@ class RefreshChatView(RawChatView):
         message = safeinput(self.input_prompt())
         return message
 
-    def add_message(self, message, prefix=""):
+    def user_message(self, message, prefix=""):
         self.refresh_screen(end="")
         print(prefix, message, sep="", end="", flush=True)
 
@@ -758,12 +772,12 @@ class Conversation:
     def init_dialogue(self):
         self.prompt, self.cutoff = load_history(self.log)
         if self.prompt == "":
-            print("History is empty, starting new conversation.\n")
+            self.view.info("History is empty, starting new conversation.")
             # first "\n" to avoid failing first context shift:
             first = "\n"+self.parse_vars( self.char['char_greeting'] )+"\n\n"
             self.to_prompt(first)
         else:
-            print(f"History loaded: {self.log}\n")
+            self.view.info(f"History loaded: {self.log}")
         self.view.refresh_screen(chars=8000)
 
     def set_char(self, char):
@@ -771,8 +785,7 @@ class Conversation:
         self.memory = self.char.memory()
         self.memory = self.parse_vars(self.memory)
         self.log = f"{self.conf.logdir}/{self.char['name']}.log"
-        print("\n\n", "#"*32, sep="")
-        print(f"Started character: {self.char['name']}")
+        self.view.info(f"\n{'#'*32}\nStarted character: {self.char['name']}")
         self.init_dialogue()
 
     def clear_char(self):
@@ -809,11 +822,18 @@ class Conversation:
     def read_stream(self):
         response = ""
         self.stop_sequence = self.get_stop_sequence()
-        #todo: try-except to keep accumulated response on ctrl+c / errors.
-        for token in self.engine.run(self):
-            response += token
-            print(token, end="", flush=True)
-        self.stop_reason = self.engine.stop_reason()
+        try:
+            for token in self.engine.run(self):
+                response += token
+                self.view.ai_message_part(token)
+        except KeyboardInterrupt:
+#            print()
+            #todo: maybe an option for this? May interrupt multi-user engine.
+            if not self.engine.idle():
+                self.engine.stop()
+            self.stop_reason = 100
+        else:
+            self.stop_reason = self.engine.stop_reason()
         self.cutoff = self.engine.cutoff
         return response
 
@@ -828,8 +848,8 @@ class Conversation:
                 readline.add_history(line)
         readline.add_history(text.replace("\n", " "))
 
-    def stream_response(self, message):
-        self.to_prompt(message)
+    def stream_response(self):
+        parts = []
         while True:
             response = self.read_stream()
             if self.stop_reason == 2:  # custom stopper == stop word
@@ -839,28 +859,26 @@ class Conversation:
                         if suffix.startswith("\n") or suffix.endswith("\n"):
                             response += "\n"
                         break
-        #else:  # 0=out of tokens, 1=eos token, -1=invalid
-#        response = response.rstrip()+"\n"
+        #else:  # 0=out of tokens, 1=eos token, -1=invalid, 100=KeyboardInterrupt marker
             self.to_readline(response)
             self.to_prompt(response)
+            parts.append(response)
             if not( self.conf.gen_until_end and self.stop_reason == 0 ):
                 break
+        return "".join(parts)
 
-    def post(self, message):
+    def ai_message(self):
         try:
             #todo: maybe an option for this? May interrupt multi-user engine.
             if not self.engine.idle():
                 self.engine.stop()
-            self.stream_response(message)
+            message = self.stream_response()
         except IOError:
-            print("Error: can not send message.")
-        except KeyboardInterrupt:
-            print()
-            #todo: maybe an option for this? May interrupt multi-user engine.
-            if not self.engine.idle():
-                self.engine.stop()
+            self.view.error("Can not receive ai response.")
+        else:
+            self.view.ai_message(message)
 
-    def add_message(self, message):
+    def user_message(self, message):
         newlines = count_newlines(self.prompt)
         prefix = ""
         if newlines > 2:
@@ -875,9 +893,8 @@ class Conversation:
             message = message[:-1]
         else:
             message = f"{message}\n\n"
-        self.view.add_message(message, prefix=prefix)
-        self.post(message)
-        self.view.refresh_screen(end="")
+        self.view.user_message(message, prefix=prefix)
+        self.to_prompt(message)
 
     def append_message(self, message):
         text = reformat(self.prompt[self.cutoff:].rstrip(), self.conf.wrap_at)
@@ -889,7 +906,8 @@ class Conversation:
         self.view.update_message()
 
     def help(self):
-        head = """Help:
+        head = """
+Help:
 Ctrl+c  -while receiving llm answer: cancel
 Ctrl-z  -exit
 "="  -add new line
@@ -899,7 +917,7 @@ Ctrl-z  -exit
 /set textmode chat/story - mode of conversation
 /load  -load Assistant character
 """
-        print(head, chat_cmd_help(), sep="", end="")
+        self.view.info(head + chat_cmd_help())
 
     @chat_cmd
     def cmd_help(self, params):
@@ -926,9 +944,11 @@ Ctrl-z  -exit
     @chat_cmd
     def cmd_ls(self, params):
         """cmd  -list available characters."""
+        names = []
         for f in Path(self.conf.chardir).iterdir():
             if f.suffix in (".json", ".pch"):
-                print(f.name)
+                names.append(f.name)
+        self.view.info("\n".join(names))
 
     @chat_cmd
     def cmd_load(self, params):
@@ -974,25 +994,25 @@ Ctrl-z  -exit
         """cmd [name] [value] -display or set variable."""
         args = params.split()
         if len(params) == 0:
-            self.conf.print()
+            self.view.info( self.conf.dump() )
         elif len(args) == 1:
             var = args[0]
-            self.conf.print(var)
+            self.view.info( self.conf.dump(var) )
         elif len(args) == 2:
             var,value = args
             if value.isdigit():
                 value = int(value)
             self.conf.setpath(var, value)
         else:
-            print("Error: set need at most 2 parameters.")
+            self.view.error("Set need at most 2 parameters.")
 
     @chat_cmd
     def cmd_preset(self, params):
         """cmd name1,name2,... -use presets."""
         if not params:
-            for name in self.conf.presets:
-                print(name)
-            print("\nActive:\n" + self.conf.presets_status())
+            lines = list(self.conf.presets.keys())
+            lines.extend( ("Active:", self.conf.presets_status()) )
+            self.view.info("\n".join(lines))
         else:
             self.conf.use_presets(params)
 
@@ -1009,7 +1029,7 @@ Ctrl-z  -exit
         if f:
             f(self, params)
         else:
-            print("Unknown command.")
+            self.view.error("Unknown command.")
 
     def use_editor(self):
         text = reformat(self.prompt[self.cutoff:], self.conf.wrap_at)
@@ -1041,8 +1061,7 @@ Ctrl-z  -exit
             self.view.refresh_screen(end="")
         elif message == "":
             self.view.refresh_screen(end="")
-            self.post("")
-            self.view.refresh_screen(end="")
+            self.ai_message()
         elif message == "=":
             self.to_prompt("\n")
             self.view.refresh_screen()
@@ -1052,7 +1071,8 @@ Ctrl-z  -exit
         elif message[0] == "+":
             self.append_message(message[1:])
         else:
-            self.add_message(message)
+            self.user_message(message)
+            self.ai_message()
 
     def message_finished(self):
         return self.prompt == "" or self.prompt.endswith("\n")
@@ -1063,7 +1083,7 @@ Ctrl-z  -exit
                 input = self.view.input()
                 self.user_input(input)
             except EOFError:
-                print("End of input, exiting...")
+                self.view.info("End of input, exiting...")
                 break
             except SystemExit:
                 break
