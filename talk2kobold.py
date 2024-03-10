@@ -279,7 +279,7 @@ class Settings:
         """For name="name1.name2..." get data[name1][name2]..."""
         store = self.data
         try:
-            if len(name):
+            if name:
                 for part in name.split("."):
                     store = store[part]
             return store
@@ -291,7 +291,7 @@ class Settings:
         store = self.data
         try:
             *path,last = name.split(".")
-            if len(name):
+            if name:
                 for var in path:
                     store = store[var]
             store[last] = value
@@ -376,7 +376,7 @@ class Character:
             ('patches', "{}"),
         ):
             text = self.data.get(variable, "")
-            if len(text):
+            if text:
                 parts.append(template.format(text))
         parts.append("***\n")
         return "\n".join(parts)
@@ -838,7 +838,7 @@ class Conversation:
         return response
 
     def to_readline(self, response):
-        if len(self.prompt) and self.prompt[-1] != "\n":
+        if self.prompt and self.prompt[-1] != "\n":
             pos = self.prompt.rfind("\n")  # -1 is ok
             text = self.prompt[pos+1:] + response
         else:
@@ -993,7 +993,7 @@ Ctrl-z  -exit
     def cmd_set(self, params):
         """cmd [name] [value] -display or set variable."""
         args = params.split()
-        if len(params) == 0:
+        if not params:
             self.view.info( self.conf.dump() )
         elif len(args) == 1:
             var = args[0]
