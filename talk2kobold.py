@@ -286,7 +286,7 @@ class Settings:
         except (KeyError,TypeError):
             print(f"Variable {name} not exists.")
 
-    def setpath(self, name, value):
+    def setpath(self, name, value, convert=True):
         """For name="name1.name2..." set data[name1][name2]... to value"""
         store = self.data
         try:
@@ -294,10 +294,15 @@ class Settings:
             if name:
                 for var in path:
                     store = store[var]
-            store[last] = value
+            if convert:
+                store[last] = type(store[last])(value)
+            else:
+                store[last] = value
             self.updated()
         except (KeyError,TypeError):
             print(f"Variable {name} not exists.")
+        except ValueError:
+            print(f"Wrong value for variable {name}.")
 
     def use_presets(self, names):
         presets = self.data["presets"]
@@ -1000,8 +1005,6 @@ Ctrl-z  -exit
             self.view.info( self.conf.dump(var) )
         elif len(args) == 2:
             var,value = args
-            if value.isdigit():
-                value = int(value)
             self.conf.setpath(var, value)
         else:
             self.view.error("Set need at most 2 parameters.")
