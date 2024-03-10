@@ -403,12 +403,16 @@ class Character:
             if path.is_file():
                 with path.open() as f:
                     if testname.endswith(".pch"):
-                        data = eval(f.read(), {"__builtins__": {"dict": dict}})
+                        try:
+                            data = eval(f.read(), {"__builtins__": {"dict": dict}})
+                        except Exception as e:
+                            raise ValueError(f'Wrong format in file "{path}"') from e
                     else:
                         data = json.load(f)
                     char = cls(data)
                     char.strip()
                     return char
+        raise FileNotFoundError(f'Unable to load char "{name}"')
 
     def to_json(self, file, dir=""):
         save = list(self.data)
@@ -959,9 +963,13 @@ Ctrl-z  -exit
     def cmd_load(self, params):
         """cmd charname  -load character."""
         name = params.strip()
-        self.conf.set("lastchar", name)
-        char = Character.load(name, self.conf.chardir)
-        self.set_char(char)
+        try:
+            char = Character.load(name, self.conf.chardir)
+        except (ValueError, FileNotFoundError) as e:
+            self.view.error(str(e))
+        else:
+            self.set_char(char)
+            self.conf.set("lastchar", name)
 
     @chat_cmd
     def cmd_save(self, params):
