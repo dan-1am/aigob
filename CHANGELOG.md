@@ -1,5 +1,82 @@
 # talk2kobold changelog
 
+## 2024.03.10
+
+- Fix /set and conf.setpath(): convert input to previous value type
+    to prevent float becoming str
+
+- Add some error handling in char.load()
+
+## 2024.03.03
+
+- Move all output code to separate ChatView classes
+
+## 2024.02.25
+
+- Use new kobold api to get max_context_length, old is wrong.
+
+## 2024.02.25
+
+- Refactor display code from chat to new ChatView class
+- Add patches field to the end of memory to patch char
+    without context reprocessing
+
+## 2024.02.19
+
+- Move context-shifting and response iteration to engine class
+- Use "with requests.Session" to do clean-up on exceptions
+- Rename chat.stop_parsed to chat.stop_sequence
+- Check LLM max_context_length to cap conf.engine value
+- Enhance history saving/loading
+- Store stop_sequence in conf as string instead of array
+- Add story/chat profiles
+
+## 2024.02.17
+
+- Move global var engine to Conversation class
+- Corrected assistant char creation
+- Move global var conf to chat.conf
+
+## 2024.02.14
+
+- New Engine class for LLM engine interface
+
+## 2024.02.12
+
+- Make deep_compare() able to handle None's in config
+- Presets and /preset chat command
+
+## 2024.01.24
+
+- Move conf variables from attributes to separate .data dict
+
+## 2024.01.22
+
+- Extract char functions into separate class Character
+- Loading assistant with /load without parameters
+- Add /save command to save char file
+- Changed --char to --load, added --conf options
+
+## 2024.01.13
+
+- Add gen_until_end mode and option.
+    In this mode generation call repeats until eos / stop word encountered.
+
+## 2024.01.11
+
+- Command @: use external editor
+
+## 2024.01.06
+
+- Randomize conf.engine['genkey']
+- Reformat text for display
+
+## 2024.01.02
+
+- Configuration nested names support: /set name1.name2 = value
+- Add conf.textmode - story/chat, chat prepends message with "user >"
+- Add conf.username
+
 ## 2024.01.02
 
 - Extract history save/load from Conversation.
