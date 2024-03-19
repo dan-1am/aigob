@@ -1100,32 +1100,34 @@ Ctrl-z  -exit
                 break
 
 
+def parse_args():
+    args = sys.argv[1:]
+    while args:
+        arg = args.pop(0)
+        if arg in ("-c", "--conf"):
+            conf.load(args.pop(0))
+        elif arg in ("-l", "--load"):
+            conf.set("lastchar", args.pop(0))
+            char = Character.load(conf.lastchar, conf.chardir)
+        elif arg in ("-j", "--json"):
+            char.to_json(args.pop(0), conf.chardir)
+            sys.exit()
+        elif arg in ("-p", "--py"):
+            char.to_pch(args.pop(0), conf.chardir)
+            sys.exit()
+        else:
+            raise NameError(f"Error: unknown option {arg}")
+
+
 
 ################ Main
 
-conf = Settings()
-conf.load()
-char = Character.load(conf.lastchar, conf.chardir)
-
-args = sys.argv[1:]
-while args:
-    arg = args.pop(0)
-    if arg in ("-c", "--conf"):
-        conf.load(args.pop(0))
-    elif arg in ("-l", "--load"):
-        conf.set("lastchar", args.pop(0))
-        char = Character.load(conf.lastchar, conf.chardir)
-    elif arg in ("-j", "--json"):
-        char.to_json(args.pop(0), conf.chardir)
-        sys.exit()
-    elif arg in ("-p", "--py"):
-        char.to_pch(args.pop(0), conf.chardir)
-        sys.exit()
-    else:
-        raise NameError(f"Error: unknown option {arg}")
-
-chat = Conversation(char, conf)
-chat.run()
-
-if conf.save_on_exit:
-    conf.save()
+if __name__ == '__main__':
+    conf = Settings()
+    conf.load()
+    char = Character.load(conf.lastchar, conf.chardir)
+    parse_args()
+    chat = Conversation(char, conf)
+    chat.run()
+    if conf.save_on_exit:
+        conf.save()
