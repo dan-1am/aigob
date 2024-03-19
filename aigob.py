@@ -229,6 +229,7 @@ class Settings:
         endpoint = "http://127.0.0.1:5001",
         username = "You",
         textmode = "chat",
+        format = "wrap",
         wrap_at = 72,
         gen_until_end = True,
         lastchar = "",
@@ -733,7 +734,7 @@ class RefreshChatView(RawChatView):
 
     def refresh_screen(self, end="", chars=2000):
         text = self.chat.prompt[-chars:]
-        text = reformat(text, self.conf.wrap_at)
+        text = self.chat.reformat(text)
         print("\n"*3, text, end, sep="", end="")
 
     def input(self):
@@ -778,6 +779,13 @@ class Conversation:
         context = dict(user=self.conf.username, char=self.char['name'])
         return eval_template(text, context)
 
+    def reformat(self, text):
+        if self.conf.format == "reformat":
+            return reformat(text, self.conf.wrap_at)
+        if self.conf.format == "wrap":
+            return wrap_text(text, self.conf.wrap_at)
+        return text
+
     def init_dialogue(self):
         self.prompt, self.cutoff = load_history(self.log)
         if self.prompt == "":
@@ -812,7 +820,7 @@ class Conversation:
 
     def del_prompt_lines(self, count=1):
         text = self.prompt[self.cutoff:]
-        text = reformat(text, self.conf.wrap_at)
+        text = self.reformat(text)
         pos = len(text)
         while count > 0:
             count -= 1
@@ -897,7 +905,7 @@ class Conversation:
             prefix = "\n"*(2-newlines)
         if self.conf.textmode == "chat":
             message = f"{self.conf.username}: {message}"
-        message = wrap_text(message, self.conf.wrap_at)
+        message = self.reformat(message)
         if message.endswith("+"):
             message = message[:-1]
         else:
@@ -906,9 +914,9 @@ class Conversation:
         self.to_prompt(message)
 
     def append_message(self, message):
-        text = reformat(self.prompt[self.cutoff:].rstrip(), self.conf.wrap_at)
+        text = self.reformat(self.prompt[self.cutoff:].rstrip())
         pos = text.rfind("\n")
-        message = wrap_text(text[pos+1:] + message, self.conf.wrap_at)
+        message = self.reformat(text[pos+1:] + message)
         # unsaved prompt, update_history() needed later
         self.prompt = self.prompt[:pos+1]
         self.to_prompt(message)
@@ -924,6 +932,7 @@ Ctrl-z  -exit
 "text+"  -let llm to continue text
 "@"  -edit in external editor
 /set textmode chat/story - mode of conversation
+/set format none/wrap/reformat - text reformatting
 /load  -load Assistant character
 """
         self.view.info(head + chat_cmd_help())
@@ -1043,7 +1052,7 @@ Ctrl-z  -exit
             self.view.error("Unknown command.")
 
     def use_editor(self):
-        text = reformat(self.prompt[self.cutoff:], self.conf.wrap_at)
+        text = self.reformat(self.prompt[self.cutoff:])
         file_to_edit = "/tmp/t2k"+random_string(8)
         with open(file_to_edit, "w") as f:
             f.write(text)
