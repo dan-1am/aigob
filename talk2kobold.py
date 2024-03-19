@@ -220,7 +220,7 @@ def deep_diff(storage, data, prefix="", changed=None):
 
 
 class Settings:
-    conffile = "talk2kobold.conf"
+    conffile = "aigob.conf"
 
     default = dict(
         save_on_exit = True,
