@@ -1,4 +1,8 @@
-# talk2kobold changelog
+# aigob changelog
+
+## 2024.03.19
+
+- Rename from talk2kobold to aigob
 
 ## 2024.03.10
 
