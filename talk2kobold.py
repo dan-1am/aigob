@@ -769,7 +769,7 @@ class Conversation:
             engine = Engine(conf)
         self.engine = engine
         if view is None:
-            view = RawChatView(conf, self)
+            view = RefreshChatView(conf, self)
         self.view = view
         self.stop_reason = 0
         self.set_char(char)
