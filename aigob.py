@@ -81,8 +81,8 @@ def split_to_paragraphs(text):
         pos = cr_pos
 
 
-def wrap_text(text, width):
-    """Wrap text to lines not exceeding width. Keep text length."""
+def reformat_lines(text, width):
+    """Reformat text lines to width. Keep text length."""
     text = text.replace("\n", " ")
 #    text = re.sub("\s{2,}", " ", text)
     result = []
@@ -105,11 +105,17 @@ def wrap_text(text, width):
 
 def reformat(text, width, keep_nl=True):
     parts = split_to_paragraphs(text)
-    newtext = "\n\n".join(wrap_text(para, width) for para in parts)
+    newtext = "\n\n".join(reformat_lines(para, width) for para in parts)
     # needed for \n before input() and for del_line
     # ugly, to be reworked:
     if keep_nl and text.endswith("\n") and not newtext.endswith("\n"):
         newtext = newtext[:-1] + "\n"
+    return newtext
+
+
+def wrap_text(text, width):
+    parts = text.split(sep="\n")
+    newtext = "\n".join(reformat_lines(line, width) for line in parts)
     return newtext
 
 ################
