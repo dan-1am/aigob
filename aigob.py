@@ -67,17 +67,18 @@ def count_newlines(text):
 
 def split_to_paragraphs(text):
     """Generator, split text maintaining its length."""
+    pos = 0
     while True:
-        pos = text.find("\n\n")
-        if pos < 0:
-            yield text
+        end = text.find("\n\n", pos)
+        if end < 0:
+            yield text[pos:]
             break
-        cr_pos = pos+2
+        cr_pos = end+2
         while text[cr_pos:cr_pos+1] == "\n":
             cr_pos += 1
-        extra = cr_pos-pos-2
-        yield text[:pos]+" "*extra
-        text = text[cr_pos:]
+        extra = cr_pos-end-2
+        yield text[pos:end]+" "*extra
+        pos = cr_pos
 
 
 def wrap_text(text, width):
