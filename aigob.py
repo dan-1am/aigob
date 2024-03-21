@@ -238,6 +238,7 @@ class Settings:
         textmode = "chat",
         format = "wrap",
         wrap_at = 72,
+        editor = "nano",
         gen_until_end = True,
         lastchar = "",
         stop_sequence = "{{user}}:||\n{{user}} ",
@@ -1063,7 +1064,7 @@ Ctrl-z  -exit
         file_to_edit = "/tmp/t2k"+random_string(8)
         with open(file_to_edit, "w") as f:
             f.write(text)
-        subprocess.run(['mcedit', file_to_edit+":99999"])
+        subprocess.run([self.conf.editor, "+99999", file_to_edit])
         with open(file_to_edit) as f:
             new = f.read()
         Path(file_to_edit).unlink(missing_ok=True)
