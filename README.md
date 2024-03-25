@@ -1,49 +1,51 @@
-# aigob - AI gray on black
+# AiGob - AI Gray On Black
 
-Console client for KoboldCpp AI text generation engine.
+Console client for the KoboldCpp AI text generation engine.
 
-Features: character loading, history editing.
+Features: character loading, history editing, chat/story modes,
+autoformat text.
 
 With SSH and Screen: multi-user chat and computer switching.
 
 ## Installation
 
-This app is intentionally single-file, possible to be downloaded
-directly, or be git-cloned.
+This app is intentionally made as single file an can be downloaded
+directly.
 
-The only dependencity is requests library.
+The only dependencity is required: the Python Requests library.
 
-On the first run aigob will create a configuration file. You can edit it
-directly (be sure to close aigob first, or the file will be overwritten) or
-with `/set variable value` command.
+Upon its initial launch AiGob creates a configuration file. You can edit
+the file directly (be sure to close AiGob first, or the file will be
+overwritten) or with chat command `/set variable value`.
 
-`endpoint` option is configured to the default koboldcpp address
-`http://127.0.0.1:5001)`.
+By default the `endpoint` option is configured to the standard KoboldCpp
+address: http://127.0.0.1:5001
 
 ## Usage
 
-You can type `/help` to list available commands.
+Typing "/help" will display a list of available commands.
 
-By default built-in assistant character is loaded. You can load
-different character with `/load path-to-charfile.json`. Then just start
-writing. To stop the AI prematurely you can use Ctrl-C.
+Initially, the built-in assistant character is loaded during startup.
+You can load alternative characters with `/load path-to-charfile.json`.
+Pressing Ctrl-C stops the AI prematurely.
 
-Simple history editing could be done with commands:
+Simple history editing includes:
 
-1. '+some text' - append text to previous line
-2. 'Some text+' - allow AI to continue this text
-3. '-' - delete last line
-4. '=' - add a newline
+1. '+some text' - Append text to previous line.
+2. 'Some text+' - Allows AI to continue this line.
+3. '-' - Delete the last line.
+4. '=' - Add a newline.
 
-Advanced editing could be done in external editor with `@` command.
+Advanced editing can be performed in external editor with `@` command.
 
-You can set your favorite console (or even windowed) editor with
-`/set editor nano` command.
+You can set your favorite console (or even windowed) editor using the
+`/set editor path-to-editor` command.
 
 ## Presets
 
-You can use presets to set several related options at once and
-be able to see at a glance how is the app configured.
+Presets allow you change multiple related settings simultaneously. They
+also provide a convenient way to observe the current state of the
+program.
 
 `/preset` lists available presets, activated presets and manually
 changed options.
