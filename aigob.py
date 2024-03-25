@@ -227,7 +227,8 @@ def deep_diff(storage, data, prefix="", changed=None):
 
 
 class Settings:
-    conffile = "aigob.conf"
+    override = "aigob.conf"
+    search_in = ["~/.config/aigob.conf"]
 
     default = dict(
         save_on_exit = True,
@@ -339,16 +340,24 @@ class Settings:
         return "\n".join(ans)
 
     def save(self):
-        with open(self.conffile, "w") as f:
+        with open(Path(self.conffile).expanduser(), "w") as f:
             json.dump(self.data, f, indent=4)
+
+    def find(self):
+        if Path(self.override).is_file():
+            return self.override
+        for name in self.search_in:
+            if Path(name).expanduser().is_file():
+                return name
+        return self.search_in[0]
 
     def load(self, path=None):
         if path is None:
-            path = self.conffile
-        else:
-            self.conffile = path
-        if Path(path).is_file():
-            with open(path, "r") as f:
+            path = self.find()
+        self.conffile = path
+        parsed_path = Path(path).expanduser()
+        if parsed_path.is_file():
+            with open(parsed_path, "r") as f:
                 loaded = json.load(f)
             self.update(loaded)
         else:
