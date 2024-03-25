@@ -166,14 +166,14 @@ conf_presets = dict(
             "mirostat_eta": 0.1,
         },
     ),
-    norepeat = dict(
+    banrepeat = dict(
         engine = {
             "rep_pen": 1.15,
             "rep_pen_range": 2000,
             "rep_pen_slope": 0.0,
         },
     ),
-    stdrepeat = dict(
+    canrepeat = dict(
         engine = {
             "rep_pen": 1.1,
             "rep_pen_range": 320,
@@ -244,7 +244,7 @@ class Settings:
         stop_sequence = "{{user}}:||\n{{user}} ",
         engine = engine_settings,
         presets = conf_presets,
-        active_presets = "strict,stdrepeat",
+        active_presets = "strict,canrepeat",
     )
 
     def __init__(self):
@@ -778,6 +778,7 @@ class Conversation:
             engine = Engine(conf)
         self.engine = engine
         if view is None:
+#            view = RawChatView(conf, self)
             view = RefreshChatView(conf, self)
         self.view = view
         self.stop_reason = 0
